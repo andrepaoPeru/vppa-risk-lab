@@ -141,3 +141,36 @@ def plot_price_sensitivity(price, profiles, strike=config.STRIKE):
     ax.legend(frameon=False, loc="upper left")
     ax.set_xlim(right=ax.get_xlim()[1] + 12)          # room for the labels
     return _save(fig, "04_price_sensitivity")
+
+
+def plot_hourly_match_heatmap(profiles, load_mw=config.LOAD_MW):
+    """
+    Shape risk: share of the flat data center load each project covers,
+    by month (rows) and hour of day (columns). Dark = load fully covered.
+    """
+    from matplotlib.colors import LinearSegmentedColormap
+    from vppa.risk import match_by_month_hour
+
+    # One hue, light -> dark (sequential): more coverage = darker blue.
+    blues = LinearSegmentedColormap.from_list(
+        "blues", ["#f0efec", "#9ec5f4", "#3987e5", "#1c5cab", "#0d366b"])
+    names = [c.replace("_mw", "") for c in profiles.columns]
+    fig, axes = plt.subplots(1, len(names), figsize=(5.2 * len(names), 4.2), sharey=True)
+    for ax, col, name in zip(axes, profiles.columns, names):
+        grid = match_by_month_hour(profiles[col], load_mw) * 100
+        im = ax.imshow(grid.values, cmap=blues, vmin=0, vmax=100, aspect="auto")
+        ax.set_title(f"{name.title()} 200 MW", loc="left", fontsize=11)
+        ax.set_xticks(range(0, 24, 3))
+        ax.set_xlabel("Hour of day (Central time)", color=COLORS["muted"])
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.tick_params(colors=COLORS["muted"], length=0)
+    axes[0].set_yticks(range(12))
+    axes[0].set_yticklabels(["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
+    cbar = fig.colorbar(im, ax=axes, shrink=0.85, pad=0.02)
+    cbar.set_label(f"% of {load_mw:.0f} MW load covered (2023-2025 avg)", color=COLORS["muted"])
+    cbar.outline.set_visible(False)
+    fig.suptitle("Shape risk: when does each project cover a flat 24/7 load?",
+                 x=0.01, y=1.03, ha="left", fontsize=13)
+    return _save(fig, "05_hourly_match_heatmap")
