@@ -132,3 +132,55 @@ def shape_cost(price: pd.Series, generation_mw: pd.Series) -> pd.DataFrame:
                         "shape_cost": (hub_avg - capture) * mwh})
     out.index.name = "year"
     return out
+
+
+# ---------------------------------------------------------------------------
+# 4. VOLUME RISK  (3. basis risk is added in Step 8, once node prices exist)
+# ---------------------------------------------------------------------------
+def monthly_capacity_factor(generation_mw: pd.Series, nameplate_mw: float) -> pd.DataFrame:
+    """Capacity factor for every (year, month): rows = years, columns = months."""
+    cf = generation_mw.resample("MS").mean() / nameplate_mw
+    return cf.groupby([cf.index.year, cf.index.month]).first().unstack()
+
+
+def low_resource_profile(generation_mw: pd.Series, nameplate_mw: float) -> pd.Series:
+    """
+    A stress-test "bad year": every month is scaled down to the WORST
+    capacity factor observed for that calendar month in the data.
+
+    Example: if the windiest-to-calmest Augusts had CF 30%, 27%, 24%, then
+    every August is scaled to 24%. A January at 40% vs. a worst January
+    of 36% is multiplied by 36/40 = 0.9.
+
+    Hours keep their actual timing and actual prices, so the real
+    hour-by-hour link between output and price is preserved; only the
+    amount of energy shrinks. With only 3 years of history this is a
+    stress scenario, not a statistical P90 (see README limitations).
+    """
+    cf = monthly_capacity_factor(generation_mw, nameplate_mw)
+    factor = cf.min(axis=0) / cf                   # (year, month) scaling factors, all <= 1
+    idx = generation_mw.index
+    hourly_factor = factor.stack().reindex(list(zip(idx.year, idx.month))).to_numpy()
+    return generation_mw * hourly_factor
+
+
+def volume_scenarios(price: pd.Series, generation_mw: pd.Series, nameplate_mw: float,
+                     strike: float = config.STRIKE,
+                     load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+    """
+    Compare the actual history with the low-resource year on the three
+    things the buyer cares about: energy (and RECs), money, and coverage.
+    """
+    scenarios = {"base": generation_mw,
+                 "low_resource": low_resource_profile(generation_mw, nameplate_mw)}
+    years = _n_years(price.index)
+    rows = {}
+    for name, gen in scenarios.items():
+        hourly = settle_hourly(price, gen, strike)
+        rows[name] = {
+            "annual_mwh": gen.sum() / years,
+            "capacity_factor": gen.mean() / nameplate_mw,
+            "annual_settlement": hourly["settlement"].sum() / years,
+            "hourly_match": hourly_match(gen, load_mw)["hourly_match"].mean(),
+        }
+    return pd.DataFrame(rows).T

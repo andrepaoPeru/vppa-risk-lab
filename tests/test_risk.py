@@ -63,3 +63,33 @@ def test_shape_cost_is_zero_for_flat_output_and_positive_for_cheap_hours():
     assert flat["shape_cost"] == 0.0
     assert cheap["capture_price"] == 10.0
     assert cheap["shape_cost"] == 200.0                     # ($30 - $10) x 10 MWh
+
+
+# --- volume risk ------------------------------------------------------------
+def _two_januaries(mw_2023, mw_2024):
+    """Flat output for all of Jan 2023 and Jan 2024."""
+    t23 = pd.date_range("2023-01-01", "2023-02-01", freq="h", tz="US/Central", inclusive="left")
+    t24 = pd.date_range("2024-01-01", "2024-02-01", freq="h", tz="US/Central", inclusive="left")
+    return pd.concat([pd.Series(mw_2023, t23), pd.Series(mw_2024, t24)])
+
+
+def test_low_resource_scales_each_month_to_worst_observed():
+    gen = _two_januaries(80.0, 60.0)                 # CF 40% and 30% on 200 MW
+    low = risk.low_resource_profile(gen, nameplate_mw=200)
+    # pytest.approx allows for tiny floating-point rounding (60.0000000001)
+    assert low[low.index.year == 2023].tolist() == pytest.approx([60.0] * 744)  # 80 x (30/40)
+    assert low[low.index.year == 2024].tolist() == pytest.approx([60.0] * 744)  # already the worst
+
+
+def test_low_resource_never_increases_output():
+    gen = _two_januaries(80.0, 60.0)
+    assert (risk.low_resource_profile(gen, 200) <= gen).all()
+
+
+def test_volume_scenarios_report_lower_energy_in_low_case():
+    gen = _two_januaries(80.0, 60.0)
+    price = pd.Series(50.0, gen.index)
+    v = risk.volume_scenarios(price, gen, nameplate_mw=200, strike=35, load_mw=100)
+    assert v.loc["low_resource", "annual_mwh"] < v.loc["base", "annual_mwh"]
+    # Price is always $15 above strike, so less energy = smaller payment to buyer
+    assert v.loc["low_resource", "annual_settlement"] < v.loc["base", "annual_settlement"]

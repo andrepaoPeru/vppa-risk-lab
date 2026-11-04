@@ -174,3 +174,42 @@ def plot_hourly_match_heatmap(profiles, load_mw=config.LOAD_MW):
     fig.suptitle("Shape risk: when does each project cover a flat 24/7 load?",
                  x=0.01, y=1.03, ha="left", fontsize=13)
     return _save(fig, "05_hourly_match_heatmap")
+
+
+def plot_volume_risk(price, profiles, strike=config.STRIKE):
+    """Base history vs. the low-resource year: energy, settlement, hourly match."""
+    from vppa.risk import volume_scenarios
+
+    names = [c.replace("_mw", "") for c in profiles.columns]
+    nameplate = {"solar": config.SOLAR_MW, "wind": config.WIND_MW}
+    res = {n: volume_scenarios(price, profiles[f"{n}_mw"], nameplate[n], strike) for n in names}
+    panels = [("annual_mwh", "Energy (GWh per year)", 1e-3),
+              ("annual_settlement", "Settlement ($M per year)", 1e-6),
+              ("hourly_match", "Hourly match (% of load)", 100)]
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    width = 0.38
+    for ax, (col, title, scale) in zip(axes, panels):
+        for i, n in enumerate(names):
+            base = res[n].loc["base", col] * scale
+            low = res[n].loc["low_resource", col] * scale
+            # Same hue per project: light = base history, full = low-resource year
+            ax.bar(i - width / 2 - 0.01, base, width, color=COLORS[n], alpha=0.4)
+            ax.bar(i + width / 2 + 0.01, low, width, color=COLORS[n])
+            for x, v in ((i - width / 2, base), (i + width / 2, low)):
+                ax.annotate(f"{v:,.1f}", (x, v), xytext=(0, 3 if v >= 0 else -11),
+                            textcoords="offset points", ha="center", fontsize=8,
+                            color=COLORS["text"])
+        ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+        ax.set_xticks(range(len(names)))
+        ax.set_xticklabels([n.title() for n in names])
+        _style(ax, title, "")
+    # Neutral legend swatches: the shade (light/full) is what the legend explains.
+    from matplotlib.patches import Patch
+    axes[0].legend(handles=[Patch(color=COLORS["muted"], alpha=0.4, label="Base history"),
+                            Patch(color=COLORS["muted"], label="Low-resource year")],
+                   frameon=False, loc="upper left", fontsize=9)
+    fig.suptitle("Volume risk: actual 2023-2025 vs. a year built from the worst month of each kind",
+                 x=0.01, ha="left", fontsize=13)
+    fig.tight_layout()
+    return _save(fig, "06_volume_risk")
