@@ -16,3 +16,8 @@ prices = data.load_hub_prices()
 print(f"{config.HUB}: {len(prices):,} hourly prices, "
       f"{prices.index.min()} to {prices.index.max()}")
 print(prices.describe().round(2))
+
+gen = data.load_system_generation()
+print(f"\nSystem generation: {len(gen):,} hours, "
+      f"{gen.index.min()} to {gen.index.max()}")
+print(gen.describe().round(0))
