@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- vppa-risk-lab ---
+# Local data cache: rebuilt by scripts/fetch_data.py, never committed
+data/
+# API credentials live only in your local .env
+.env
