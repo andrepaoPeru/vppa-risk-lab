@@ -9,6 +9,9 @@ import matplotlib
 matplotlib.use("Agg")            # draw to files, no screen needed
 import matplotlib.pyplot as plt
 
+# Treat "$" as a normal character (dollar amounts), not as math markup.
+plt.rcParams["text.parse_math"] = False
+
 from vppa import config
 
 COLORS = {"solar": "#eb6834", "wind": "#2a78d6", "blend": "#1baf7a",
@@ -112,3 +115,29 @@ def plot_negative_price_hours(price):
            "Number of hours", "Hour of day (Central time)")
     ax.legend(frameon=False, loc="upper left", ncol=3)
     return _save(fig, "03_negative_price_hours")
+
+
+def plot_price_sensitivity(price, profiles, strike=config.STRIKE):
+    """Average annual settlement vs. a parallel shift in every hourly price."""
+    from vppa.risk import price_sensitivity
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    for col in profiles.columns:
+        name = col.replace("_mw", "")
+        sens = price_sensitivity(price, profiles[col], strike)
+        y = sens["annual_settlement"] / 1e6
+        ax.plot(sens.index, y, color=COLORS[name], linewidth=2, marker="o",
+                markersize=5, label=name.title())
+        slope_k = sens["dollars_per_1_shift"].iloc[0] / 1e3
+        ax.annotate(f"{name.title()}: ${slope_k:,.0f}k per $1/MWh",
+                    xy=(sens.index[-1], y.iloc[-1]), xytext=(6, 0),
+                    textcoords="offset points", va="center",
+                    fontsize=9, color=COLORS["text"])
+    ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+    ax.axvline(0, color=COLORS["grid"], linewidth=0.8)
+    _style(ax, f"Price risk: average annual settlement vs. price shift (strike ${strike:.0f})",
+           "$ million per year (+ = project pays buyer)",
+           f"Change applied to every hourly {config.HUB} price ($/MWh)")
+    ax.legend(frameon=False, loc="upper left")
+    ax.set_xlim(right=ax.get_xlim()[1] + 12)          # room for the labels
+    return _save(fig, "04_price_sensitivity")
