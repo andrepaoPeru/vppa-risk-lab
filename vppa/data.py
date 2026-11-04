@@ -7,6 +7,8 @@ Each fetch function follows the same pattern:
 
 So the internet is only needed the first time.
 """
+import time
+
 import pandas as pd
 import gridstatus
 
@@ -46,6 +48,23 @@ def to_hourly(df: pd.DataFrame, time_col: str = "Interval Start",
     return hourly
 
 
+def with_retries(fetch, attempts: int = 4, wait_seconds: float = 5.0):
+    """
+    Call fetch(); if it fails, wait and try again (5s, 10s, 20s...).
+
+    ERCOT's public website sometimes rejects or truncates a download
+    (HTTP 403, broken zip file) and then works a few seconds later.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return fetch()
+        except Exception as err:
+            if attempt == attempts:
+                raise
+            print(f"  attempt {attempt} failed ({type(err).__name__}), retrying...")
+            time.sleep(wait_seconds * 2 ** (attempt - 1))
+
+
 # ---------------------------------------------------------------------------
 # Hub prices
 # ---------------------------------------------------------------------------
@@ -62,7 +81,7 @@ def fetch_hub_prices(year: int, hub: str = config.HUB) -> pd.Series:
         return pd.read_parquet(path)["price"]
 
     print(f"Downloading ERCOT real-time hub/zone prices for {year}...")
-    raw = gridstatus.Ercot().get_rtm_spp(year)        # all hubs + load zones, 15-min
+    raw = with_retries(lambda: gridstatus.Ercot().get_rtm_spp(year))  # all hubs + zones, 15-min
     raw = raw[raw["Location"] == hub]
     if raw.empty:
         raise ValueError(f"No rows for {hub} in {year}. Check the hub name.")
@@ -75,3 +94,4 @@ def fetch_hub_prices(year: int, hub: str = config.HUB) -> pd.Series:
 def load_hub_prices(years=config.YEARS, hub: str = config.HUB) -> pd.Series:
     """All years stacked into one hourly price series."""
     return pd.concat([fetch_hub_prices(y, hub) for y in years]).sort_index()
+
