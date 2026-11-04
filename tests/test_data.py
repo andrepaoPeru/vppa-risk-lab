@@ -30,3 +30,49 @@ def test_spring_forward_day_has_23_hours():
     # 10 Mar 2024: clocks jump ahead, the 2 AM hour does not exist.
     df = _fifteen_min_frame("2024-03-10 00:00", "2024-03-11 00:00", lambda i: 1.0)
     assert len(to_hourly(df)) == 23
+
+
+# ---------------------------------------------------------------------------
+# Fuel-mix parser
+# ---------------------------------------------------------------------------
+from vppa.data import parse_fuel_mix
+
+
+def _labels():
+    """ERCOT's interval-ending column labels: 0:15 ... 23:45, 0:00."""
+    labels = [f"{m // 60}:{m % 60:02d}" for m in range(15, 24 * 60, 15)]
+    return labels + ["0:00"]
+
+
+def _fuel_mix_day(date, solar_mwh, wind_mwh):
+    """One fake day of ERCOT fuel-mix data with constant 15-min MWh."""
+    cols = {lab: [solar_mwh, wind_mwh, 999.0] for lab in _labels()}
+    return pd.DataFrame({"Date": [pd.Timestamp(date)] * 3,
+                         "Fuel": ["Solar", "Wind", "Coal"], **cols})
+
+
+def test_fuel_mix_sums_four_intervals_to_hourly_mw():
+    # 250 MWh every 15 minutes = 1,000 MWh per hour = 1,000 MW average.
+    hourly = parse_fuel_mix(_fuel_mix_day("2024-07-01", 250.0, 100.0))
+    assert len(hourly) == 24
+    assert list(hourly.columns) == ["solar_mw", "wind_mw"]   # coal dropped
+    assert (hourly["solar_mw"] == 1000.0).all()
+    assert (hourly["wind_mw"] == 400.0).all()
+    # "0:15" is the interval that STARTS at midnight.
+    assert hourly.index[0] == pd.Timestamp("2024-07-01 00:00", tz="US/Central")
+
+
+def test_fuel_mix_fall_back_day_uses_dst_columns():
+    day = _fuel_mix_day("2024-11-03", 10.0, 10.0)
+    for lab in ["01:15 (DST)", "01:30 (DST)", "01:45 (DST)", "02:00 (DST)"]:
+        day[lab] = 10.0
+    hourly = parse_fuel_mix(day)
+    assert len(hourly) == 25
+    assert (hourly["solar_mw"] == 40.0).all()
+
+
+def test_fuel_mix_spring_forward_day_skips_missing_hour():
+    day = _fuel_mix_day("2024-03-10", 10.0, 10.0)
+    for lab in ["2:15", "2:30", "2:45", "3:00"]:
+        day[lab] = float("nan")            # ERCOT leaves the 2 AM hour blank
+    assert len(parse_fuel_mix(day)) == 23

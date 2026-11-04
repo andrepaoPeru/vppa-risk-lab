@@ -95,3 +95,82 @@ def load_hub_prices(years=config.YEARS, hub: str = config.HUB) -> pd.Series:
     """All years stacked into one hourly price series."""
     return pd.concat([fetch_hub_prices(y, hub) for y in years]).sort_index()
 
+
+# ---------------------------------------------------------------------------
+# System-wide solar and wind generation
+# ---------------------------------------------------------------------------
+# ERCOT "Interval Generation by Fuel" report: one public Excel file per
+# year, one sheet per month, one row per (day, fuel), and one column per
+# 15-minute interval holding the MWh generated in that interval.
+# Listed on https://www.ercot.com/gridinfo/generation
+FUEL_MIX_URLS = {
+    2023: "https://www.ercot.com/files/docs/2023/02/07/IntGenbyFuel2023.xlsx",
+    2024: "https://www.ercot.com/files/docs/2024/02/08/IntGenbyFuel2024.xlsx",
+    2025: "https://www.ercot.com/files/docs/2025/02/07/IntGenbyFuel2025.xlsx",
+}
+MONTH_SHEETS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def parse_fuel_mix(df: pd.DataFrame, fuels=("Solar", "Wind")) -> pd.DataFrame:
+    """
+    Turn ERCOT's wide fuel-mix table into hourly MW, one column per fuel.
+
+    Column labels are the END of each 15-minute interval:
+      "0:15" = 00:00-00:15, ..., "0:00" = 23:45-24:00 (end of day).
+    On the November "fall back" day there are 4 extra columns such as
+    "01:15 (DST)". We treat those as the second, repeated 1 AM hour
+    (after clocks go back). On the March "spring forward" day, the
+    2 AM columns are empty because that hour does not exist.
+    """
+    df = df[df["Fuel"].isin(fuels)]
+    interval_cols = [c for c in df.columns if ":" in str(c)]
+
+    # Wide -> long: one row per (day, fuel, interval).
+    long = df.melt(id_vars=["Date", "Fuel"], value_vars=interval_cols,
+                   var_name="label", value_name="mwh").dropna(subset=["mwh"])
+
+    # "13:45" -> interval ends 825 minutes after midnight -> starts at 810.
+    label = long["label"].astype(str)
+    is_repeat_hour = label.str.contains("DST")
+    hh_mm = label.str.replace(" (DST)", "", regex=False).str.split(":", expand=True)
+    end_min = hh_mm[0].astype(int) * 60 + hh_mm[1].astype(int)
+    end_min = end_min.where(end_min > 0, 24 * 60)            # "0:00" means midnight at day end
+    start_local = (pd.to_datetime(long["Date"]).dt.normalize()
+                   + pd.to_timedelta(end_min - 15, unit="min"))
+
+    # Attach the Central time zone. ambiguous=True means "the first
+    # (daylight time) 1 AM hour"; the DST-labelled columns are the second.
+    long["interval_start"] = start_local.dt.tz_localize(
+        config.TIMEZONE, ambiguous=~is_repeat_hour.to_numpy(), nonexistent="NaT")
+    long = long.dropna(subset=["interval_start"])
+
+    # Four 15-minute MWh values summed = MWh in that hour = average MW.
+    hour_utc = long["interval_start"].dt.tz_convert("UTC").dt.floor("h")
+    hourly = long.groupby([hour_utc, "Fuel"])["mwh"].sum().unstack("Fuel")
+    hourly.index = hourly.index.tz_convert(config.TIMEZONE)
+    hourly.index.name = "hour_start"
+    hourly.columns = [f"{c.lower()}_mw" for c in hourly.columns]   # solar_mw, wind_mw
+    hourly.columns.name = None
+    return hourly
+
+
+def fetch_system_generation(year: int) -> pd.DataFrame:
+    """Hourly ERCOT-wide solar and wind output (MW) for one year."""
+    path = _cache_path(f"system_generation_{year}")
+    if path.exists():
+        return pd.read_parquet(path)
+
+    print(f"Downloading ERCOT generation by fuel for {year}...")
+    url = FUEL_MIX_URLS[year]
+    sheets = with_retries(lambda: pd.read_excel(url, sheet_name=MONTH_SHEETS))
+    raw = pd.concat(sheets.values(), ignore_index=True)
+
+    gen = parse_fuel_mix(raw)
+    gen.to_parquet(path)
+    return gen
+
+
+def load_system_generation(years=config.YEARS) -> pd.DataFrame:
+    """All years of hourly system solar and wind output stacked together."""
+    return pd.concat([fetch_system_generation(y) for y in years]).sort_index()
