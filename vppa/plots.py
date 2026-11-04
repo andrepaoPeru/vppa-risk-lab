@@ -72,3 +72,43 @@ def plot_monthly_capacity_factor(profiles):
     _style(ax, "Monthly capacity factor of the proxy projects", "Capacity factor (%)")
     ax.legend(frameon=False, loc="lower left", ncol=2)
     return _save(fig, "02_monthly_capacity_factor")
+
+
+def plot_monthly_settlement(results: dict, strike: float = config.STRIKE):
+    """
+    Monthly VPPA settlement for each project, one panel each, same y-axis.
+    Above zero: the project paid the buyer. Below zero: the buyer paid.
+    """
+    from vppa.settlement import summarize_settlement
+
+    names = list(results)
+    fig, axes = plt.subplots(len(names), 1, figsize=(9, 2.8 * len(names)),
+                             sharex=True, sharey=True)
+    for ax, name in zip(axes, names):
+        monthly = summarize_settlement(results[name], "MS")["settlement"] / 1e6
+        ax.bar(monthly.index, monthly, width=24, color=COLORS[name])
+        ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+        _style(ax, f"{name.title()} 200 MW", "$ million")
+    axes[0].figure.suptitle(
+        f"Monthly VPPA settlement at {config.HUB}, strike ${strike:.0f}/MWh "
+        "(positive = project pays buyer)", x=0.01, ha="left", fontsize=13)
+    fig.tight_layout()
+    return _save(fig, "03_monthly_settlement")
+
+
+def plot_negative_price_hours(price):
+    """How many hours had a negative hub price, by hour of day, per year."""
+    neg = price[price < 0]
+    counts = neg.groupby([neg.index.year, neg.index.hour]).size().unstack(0).reindex(range(24)).fillna(0)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    shades = ["#9ec5f4", "#5598e7", "#1c5cab"]            # one hue, light -> dark = older -> newer
+    for color, year in zip(shades, counts.columns):
+        ax.plot(counts.index, counts[year], color=color, linewidth=2, marker="o",
+                markersize=4, label=str(year))
+    ax.set_xticks(range(0, 24, 3))
+    ax.set_xlim(0, 23)
+    ax.set_ylim(bottom=0)
+    _style(ax, f"Hours with a negative {config.HUB} price, by hour of day",
+           "Number of hours", "Hour of day (Central time)")
+    ax.legend(frameon=False, loc="upper left", ncol=3)
+    return _save(fig, "03_negative_price_hours")
