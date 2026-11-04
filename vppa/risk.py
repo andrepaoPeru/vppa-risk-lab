@@ -70,3 +70,65 @@ def tail_concentration(price: pd.Series, generation_mw: pd.Series,
             "hours": int(top.sum()),
             "settlement_in_top_hours": hourly.loc[top, "settlement"].sum(),
             "settlement_in_other_hours": hourly.loc[~top, "settlement"].sum()}
+
+
+# ---------------------------------------------------------------------------
+# 2. SHAPE RISK
+# ---------------------------------------------------------------------------
+def hourly_match(generation_mw: pd.Series,
+                 load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+    """
+    How well the project's output lines up with a flat 24/7 load, per year.
+
+    annual_volume_match : total MWh generated / total MWh consumed.
+                          100% is what "100% renewable" usually means
+                          today (annual matching).
+    hourly_match        : MWh of load actually covered hour by hour /
+                          total load. Output above the load in one hour
+                          cannot cover a shortfall in another hour.
+                          This is the 24/7 carbon-free energy view.
+    hours_fully_covered : share of hours where output >= load.
+    excess_share        : share of generated MWh that exceeded the load
+                          in its hour (sold back to the grid, not "used").
+    """
+    load = pd.Series(load_mw, index=generation_mw.index)
+    matched = np.minimum(generation_mw, load)
+    excess = (generation_mw - load).clip(lower=0)
+    by_year = generation_mw.index.year
+    out = pd.DataFrame({
+        "annual_volume_match": generation_mw.groupby(by_year).sum() / load.groupby(by_year).sum(),
+        "hourly_match": matched.groupby(by_year).sum() / load.groupby(by_year).sum(),
+        "hours_fully_covered": (generation_mw >= load).groupby(by_year).mean(),
+        "excess_share": excess.groupby(by_year).sum() / generation_mw.groupby(by_year).sum(),
+    })
+    out.index.name = "year"
+    return out
+
+
+def match_by_month_hour(generation_mw: pd.Series,
+                        load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+    """Average share of load covered, as a 12 (months) x 24 (hours) table."""
+    covered = np.minimum(generation_mw, load_mw) / load_mw
+    return covered.groupby([covered.index.month, covered.index.hour]).mean().unstack()
+
+
+def shape_cost(price: pd.Series, generation_mw: pd.Series) -> pd.DataFrame:
+    """
+    The dollar cost of WHEN the project generates, per year.
+
+    shape_cost = (hub average price - capture price) x MWh
+
+    It compares the project's energy with the same MWh delivered as a
+    flat block in every hour. Positive = the project's timing is worth
+    less than flat power (it generates mostly in cheap hours).
+    """
+    df = pd.concat({"price": price, "mwh": generation_mw}, axis=1, join="inner")
+    g = df.groupby(df.index.year)
+    hub_avg = g["price"].mean()
+    mwh = g["mwh"].sum()
+    capture = (df["price"] * df["mwh"]).groupby(df.index.year).sum() / mwh
+    out = pd.DataFrame({"hub_avg_price": hub_avg, "capture_price": capture,
+                        "shape_discount_per_mwh": hub_avg - capture,
+                        "shape_cost": (hub_avg - capture) * mwh})
+    out.index.name = "year"
+    return out
