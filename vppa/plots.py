@@ -5,6 +5,7 @@ Colors are fixed per entity across the whole project so a reader never
 has to re-learn them: solar = orange, wind = blue, data center load = gray.
 """
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")            # draw to files, no screen needed
 import matplotlib.pyplot as plt
@@ -213,3 +214,47 @@ def plot_volume_risk(price, profiles, strike=config.STRIKE):
                  x=0.01, ha="left", fontsize=13)
     fig.tight_layout()
     return _save(fig, "06_volume_risk")
+
+
+def plot_monte_carlo(annual, summary, actual_by_year=None, strike=config.STRIKE):
+    """
+    Distribution of simulated annual settlement, one panel per project.
+    Marks the expected value, the 5th percentile (cash flow at risk) and,
+    if given, the real 2023-2025 results for comparison.
+    """
+    names = list(summary.index)
+    fig, axes = plt.subplots(len(names), 1, figsize=(9, 3.2 * len(names)),
+                             sharex=True)
+    all_vals = annual[[f"{n}_settlement" for n in names]] / 1e6
+    bins = np.linspace(all_vals.min().min(), all_vals.max().max(), 70)
+    for ax, n in zip(axes, names):
+        vals = all_vals[f"{n}_settlement"]
+        ax.hist(vals, bins=bins, color=COLORS[n], alpha=0.85, edgecolor="white", linewidth=0.5)
+        ev = summary.loc[n, "expected_value"] / 1e6
+        p5 = summary.loc[n, "p5_annual"] / 1e6
+        top = ax.get_ylim()[1]
+        ax.axvline(ev, color=COLORS["text"], linewidth=1.5)
+        ax.annotate(f"Expected {ev:+.1f}M", (ev, top * 0.92), xytext=(4, 0),
+                    textcoords="offset points", fontsize=9)
+        ax.axvline(p5, color=COLORS["text"], linewidth=1.5, linestyle="--")
+        ax.annotate(f"5th pct {p5:+.1f}M\nCFaR {ev - p5:.1f}M", (p5, top * 0.72),
+                    xytext=(-4, 0), textcoords="offset points", ha="right", fontsize=9)
+        if actual_by_year is not None:
+            last_x, level = None, 0
+            for year, v in sorted(actual_by_year[n].items(), key=lambda kv: kv[1]):
+                x = v / 1e6
+                # Stack labels upward when two real years are close together.
+                level = level + 1 if last_x is not None and x - last_x < 1.5 else 0
+                last_x = x
+                ax.plot(x, top * 0.05, marker="v", markersize=9,
+                        color=COLORS["text"], markeredgecolor="white")
+                ax.annotate(str(year), (x, top * (0.12 + 0.09 * level)),
+                            ha="center", fontsize=8)
+        ax.axvline(0, color=COLORS["muted"], linewidth=0.8, alpha=0.6)
+        _style(ax, f"{n.title()} 200 MW", "Simulated years")
+    axes[-1].set_xlabel("Annual settlement, $ million (+ = project pays buyer)",
+                        color=COLORS["muted"])
+    fig.suptitle(f"Monte Carlo: {len(annual):,} simulated years, strike ${strike:.0f}/MWh "
+                 "(triangles = actual 2023-2025)", x=0.01, ha="left", fontsize=13)
+    fig.tight_layout()
+    return _save(fig, "07_monte_carlo")
