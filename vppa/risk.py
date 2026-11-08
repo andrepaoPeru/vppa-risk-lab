@@ -184,3 +184,70 @@ def volume_scenarios(price: pd.Series, generation_mw: pd.Series, nameplate_mw: f
             "hourly_match": hourly_match(gen, load_mw)["hourly_match"].mean(),
         }
     return pd.DataFrame(rows).T
+
+
+# ---------------------------------------------------------------------------
+# 5. HEDGE EFFECTIVENESS - does the VPPA make the buyer's power bill steadier?
+# ---------------------------------------------------------------------------
+def annual_costs(price: pd.Series, generation: pd.DataFrame,
+                 strike: float = config.STRIKE,
+                 load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+    """
+    Historical yearly table in the same layout the Monte Carlo produces:
+    load_cost (buying the flat load at the hub price) and one
+    <project>_settlement column per generation column.
+    """
+    df = generation.join(price.rename("price"), how="inner")
+    year = df.index.year
+    out = pd.DataFrame({"load_cost": (df["price"] * load_mw).groupby(year).sum()})
+    for col in generation.columns:
+        out[f"{col.replace('_mw', '')}_settlement"] = \
+            ((df["price"] - strike) * df[col]).groupby(year).sum()
+    out.index.name = "year"
+    return out
+
+
+def net_costs(annual: pd.DataFrame) -> pd.DataFrame:
+    """
+    The buyer's all-in annual power cost with each VPPA:
+
+        net cost = cost of buying the load at market - VPPA settlement
+
+    Settlement is positive when the project pays the buyer, so a payout
+    lowers the net cost. Column "no_vppa" is the unhedged cost.
+    """
+    out = pd.DataFrame({"no_vppa": annual["load_cost"]})
+    for col in annual.columns:
+        if col.endswith("_settlement"):
+            out[col.replace("_settlement", "")] = annual["load_cost"] - annual[col]
+    return out
+
+
+def hedge_effectiveness(annual: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
+    """
+    Compare the buyer's annual power cost with and without each VPPA.
+
+    A hedge is judged by how much it STEADIES the total cost, not by
+    whether the contract itself makes money.
+
+      mean_cost         : average annual cost
+      std_cost          : year-to-year swing (standard deviation)
+      std_reduction     : share of the unhedged swing removed (1.0 = perfect hedge)
+      cost_p95          : a 1-in-20 expensive year
+      worst_case_saving : how much lower that 1-in-20 cost is than with no VPPA
+      hedge_premium     : extra average cost of hedging (+ = the hedge costs money)
+    """
+    costs = net_costs(annual)
+    base = costs["no_vppa"]
+    rows = {}
+    for name in costs.columns:
+        c = costs[name]
+        rows[name] = {
+            "mean_cost": c.mean(),
+            "std_cost": c.std(),
+            "std_reduction": 1 - c.std() / base.std(),
+            "cost_p95": c.quantile(confidence),
+            "worst_case_saving": base.quantile(confidence) - c.quantile(confidence),
+            "hedge_premium": c.mean() - base.mean(),
+        }
+    return pd.DataFrame(rows).T

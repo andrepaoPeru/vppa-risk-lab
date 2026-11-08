@@ -93,3 +93,32 @@ def test_volume_scenarios_report_lower_energy_in_low_case():
     assert v.loc["low_resource", "annual_mwh"] < v.loc["base", "annual_mwh"]
     # Price is always $15 above strike, so less energy = smaller payment to buyer
     assert v.loc["low_resource", "annual_settlement"] < v.loc["base", "annual_settlement"]
+
+
+# --- hedge effectiveness ----------------------------------------------------
+def test_flat_generation_equal_to_load_is_a_perfect_hedge():
+    # If the project makes exactly the load every hour, the buyer's net cost
+    # is load x strike no matter what the price does.
+    annual = pd.DataFrame({
+        "load_cost": [100 * 20.0, 100 * 50.0, 100 * 80.0],             # prices 20, 50, 80
+        "flat_settlement": [100 * (20 - 35.0), 100 * (50 - 35.0), 100 * (80 - 35.0)],
+    })
+    h = risk.hedge_effectiveness(annual)
+    assert risk.net_costs(annual)["flat"].tolist() == [3500.0, 3500.0, 3500.0]
+    assert h.loc["flat", "std_reduction"] == pytest.approx(1.0)
+    assert h.loc["flat", "hedge_premium"] == pytest.approx(3500.0 - 5000.0)
+    assert h.loc["no_vppa", "std_reduction"] == 0.0
+
+
+def test_payout_lowers_net_cost():
+    annual = pd.DataFrame({"load_cost": [1000.0], "x_settlement": [300.0]})
+    assert risk.net_costs(annual).loc[0, "x"] == 700.0
+
+
+def test_annual_costs_matches_hand_calculation():
+    t = _hours(2)
+    price = pd.Series([10.0, 50.0], t)
+    gen = pd.DataFrame({"wind_mw": [100.0, 0.0]}, t)
+    a = risk.annual_costs(price, gen, strike=35, load_mw=100).loc[2024]
+    assert a["load_cost"] == 100 * 10 + 100 * 50
+    assert a["wind_settlement"] == (10 - 35) * 100
