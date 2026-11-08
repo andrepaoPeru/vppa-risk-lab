@@ -326,3 +326,32 @@ def plot_battery_day(solar_mw, battery, load_mw=config.LOAD_MW):
     ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.17),
               ncol=3, fontsize=8)
     return _save(fig, "08_battery_day")
+
+
+def plot_example_week(profiles, start="2025-08-04", end="2025-08-10",
+                      load_mw=config.LOAD_MW):
+    """
+    Shape risk in one real week: each project's hourly output vs. the flat
+    load. Gray = shortfall bought from the grid; tint = excess sold back.
+    """
+    week = profiles.loc[start:end]
+    cols = [c for c in ("solar_mw", "wind_mw") if c in week]
+    fig, axes = plt.subplots(len(cols), 1, figsize=(11, 3 * len(cols)), sharex=True, sharey=True)
+    for ax, col in zip(np.atleast_1d(axes), cols):
+        name = col.replace("_mw", "")
+        g = week[col]
+        ax.fill_between(g.index, g, load_mw, where=g < load_mw, color="#c3c2b7", alpha=0.6,
+                        step="post", label="Shortfall: bought from the grid")
+        ax.fill_between(g.index, g, load_mw, where=g > load_mw, color=COLORS[name], alpha=0.25,
+                        step="post", label="Excess: sold to the grid")
+        ax.step(g.index, g, where="post", color=COLORS[name], linewidth=1.8,
+                label=f"{name.title()} 200 MW output")
+        ax.axhline(load_mw, color=COLORS["text"], linewidth=1.5, linestyle="--",
+                   label=f"Data center load {load_mw:.0f} MW")
+        ax.set_ylim(0, 200)
+        _style(ax, f"{name.title()}: {start} to {end}", "MW")
+        ax.legend(frameon=False, loc="upper right", fontsize=8, ncol=4)
+    fig.suptitle("Shape risk in one real week: gray gaps are hours the project cannot cover",
+                 x=0.01, ha="left", fontsize=13)
+    fig.tight_layout()
+    return _save(fig, "05_example_week")
