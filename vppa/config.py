@@ -44,3 +44,10 @@ STRIKE = 35.0
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"          # parquet cache (git-ignored)
 FIGURES_DIR = ROOT / "figures"    # charts used in the README
+
+# ---------------------------------------------------------------------------
+# Hypothetical battery paired with the solar project (Step 11)
+# ---------------------------------------------------------------------------
+BATTERY_MW = 100.0          # maximum charge / discharge rate
+BATTERY_MWH = 400.0         # storage size: 4 hours at full power
+BATTERY_EFFICIENCY = 0.85   # round trip: 100 MWh in -> 85 MWh back out
