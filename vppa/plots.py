@@ -16,6 +16,7 @@ plt.rcParams["text.parse_math"] = False
 from vppa import config
 
 COLORS = {"solar": "#eb6834", "wind": "#2a78d6", "blend": "#1baf7a",
+          "solar_battery": "#e87ba4",
           "load": "#52514e", "grid": "#e4e3df", "text": "#0b0b0b",
           "muted": "#52514e"}
 
@@ -258,3 +259,70 @@ def plot_monte_carlo(annual, summary, actual_by_year=None, strike=config.STRIKE)
                  "(triangles = actual 2023-2025)", x=0.01, ha="left", fontsize=13)
     fig.tight_layout()
     return _save(fig, "07_monte_carlo")
+
+
+LABELS = {"solar": "Solar", "wind": "Wind", "blend": "Solar + wind",
+          "solar_battery": "Solar + battery"}
+
+
+def plot_portfolio_comparison(table, sizes=None, title_note=""):
+    """
+    Four panels, one bar per option: expected settlement, cash flow at
+    risk, hourly match and breakeven strike (capture price).
+    """
+    names = list(table.index)
+    panels = [("expected_value", "Expected settlement ($M/yr, + = paid to buyer)", 1e-6, "{:+.1f}"),
+              ("cfar_95", "Cash flow at risk, 95% ($M/yr)", 1e-6, "{:.1f}"),
+              ("hourly_match", "Hourly match of 100 MW load (%)", 100, "{:.0f}%"),
+              ("capture_price", "Breakeven strike = capture price ($/MWh)", 1, "${:.1f}")]
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7))
+    for ax, (col, title, scale, fmt) in zip(axes.flat, panels):
+        vals = table[col] * scale
+        bars = ax.bar(range(len(names)), vals, color=[COLORS[n] for n in names], width=0.65)
+        for b, v in zip(bars, vals):
+            ax.annotate(fmt.format(v), (b.get_x() + b.get_width() / 2, v),
+                        xytext=(0, 3 if v >= 0 else -12), textcoords="offset points",
+                        ha="center", fontsize=9, color=COLORS["text"])
+        ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+        ax.margins(y=0.15)                       # room for the value labels
+        ax.set_xticks(range(len(names)))
+        labels = [LABELS[n] if not sizes else f"{LABELS[n]}\n{sizes[n]:.0f} MW" for n in names]
+        ax.set_xticklabels(labels, fontsize=9)
+        _style(ax, title, "")
+        if col == "capture_price":
+            ax.axhline(config.STRIKE, color=COLORS["text"], linestyle="--", linewidth=1)
+            ax.annotate(f"Contract strike ${config.STRIKE:.0f}", (1, config.STRIKE),
+                        xytext=(0, 4), textcoords="offset points", ha="center", fontsize=8)
+    fig.suptitle(f"Which portfolio for a 24/7 data center? {title_note}",
+                 x=0.01, ha="left", fontsize=13)
+    fig.tight_layout()
+    return _save(fig, "08_portfolio_comparison")
+
+
+def plot_battery_day(solar_mw, battery, load_mw=config.LOAD_MW):
+    """
+    Average day in summer (Jun-Aug 2025): solar alone vs. solar + battery,
+    and the battery's charging (midday) and discharging (evening).
+    """
+    sel = (solar_mw.index.year == 2025) & solar_mw.index.month.isin([6, 7, 8])
+    hour = solar_mw.index[sel].hour
+    solo = solar_mw[sel].groupby(hour).mean()
+    b = battery[sel].groupby(hour).mean()
+    fig, ax = plt.subplots(figsize=(8.5, 4.5))
+    ax.fill_between(b.index, 0, b["discharge_mw"], color=COLORS["solar_battery"], alpha=0.35,
+                    label="Battery discharging")
+    ax.fill_between(b.index, 0, -b["charge_mw"], color=COLORS["muted"], alpha=0.25,
+                    label="Battery charging (shown below zero)")
+    ax.plot(solo.index, solo, color=COLORS["solar"], linewidth=2, label="Solar alone")
+    ax.plot(b.index, b["delivered_mw"], color=COLORS["solar_battery"], linewidth=2.5,
+            label="Solar + battery delivered")
+    ax.axhline(load_mw, color=COLORS["text"], linestyle="--", linewidth=1.3,
+               label=f"Data center load {load_mw:.0f} MW")
+    ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+    ax.set_xticks(range(0, 24, 3))
+    ax.set_xlim(0, 23)
+    _style(ax, "How the battery reshapes solar: average summer day, 2025 (200 MW solar)",
+           "MW", "Hour of day (Central time)")
+    ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.17),
+              ncol=3, fontsize=8)
+    return _save(fig, "08_battery_day")
