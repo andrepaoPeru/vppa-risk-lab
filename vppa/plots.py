@@ -355,3 +355,45 @@ def plot_example_week(profiles, start="2025-08-04", end="2025-08-10",
                  x=0.01, ha="left", fontsize=13)
     fig.tight_layout()
     return _save(fig, "05_example_week")
+
+
+def plot_hedge_effectiveness(sim_annual, hist_annual=None, sizes=None,
+                             strike=config.STRIKE):
+    """
+    The buyer's annual power cost with no VPPA vs. with each VPPA:
+    box = middle 50% of simulated years, whiskers = 5th-95th percentile,
+    dots = actual 2023-2025. A shorter box means a steadier bill.
+    """
+    from vppa.risk import net_costs
+
+    costs = net_costs(sim_annual) / 1e6
+    names = list(costs.columns)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    box = ax.boxplot([costs[n] for n in names], positions=range(len(names)), widths=0.55,
+                     whis=(5, 95), showfliers=False, patch_artist=True,
+                     medianprops={"color": COLORS["text"], "linewidth": 1.5})
+    for patch, n in zip(box["boxes"], names):
+        patch.set_facecolor(COLORS.get(n, "#c3c2b7"))
+        patch.set_alpha(0.75)
+        patch.set_edgecolor("white")
+    if hist_annual is not None:
+        hist = net_costs(hist_annual) / 1e6
+        for i, n in enumerate(names):
+            ax.scatter([i] * len(hist), hist[n], color=COLORS["text"], s=22, zorder=3,
+                       label="Actual 2023-2025" if i == 0 else None)
+    labels = []
+    for n in names:
+        if n == "no_vppa":
+            labels.append("No VPPA\n(buy at hub price)")
+        else:
+            size = f"\n{sizes[n]:.0f} MW" if sizes else ""
+            labels.append(f"{LABELS[n]}{size}")
+    ax.set_xticks(range(len(names)))
+    ax.set_xticklabels(labels, fontsize=9)
+    _style(ax, f"Hedge effectiveness: the data center's annual power cost, strike ${strike:.0f}",
+           "$ million per year (100 MW, 24/7)")
+    ax.legend(frameon=False, loc="upper right", fontsize=9)
+    fig.text(0.01, -0.02, f"Box = middle 50% of {len(costs):,} simulated years; line = median; "
+             "whiskers = 5th to 95th percentile. A shorter box means a steadier power bill.",
+             fontsize=8, color=COLORS["muted"])
+    return _save(fig, "09_hedge_effectiveness")

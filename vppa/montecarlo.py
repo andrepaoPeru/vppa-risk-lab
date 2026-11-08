@@ -53,6 +53,9 @@ def daily_table(price: pd.Series, generation: pd.DataFrame,
       <project>_settlement : sum over 24 hours of (price - strike) x MWh
       <project>_mwh        : energy generated
       <project>_matched    : MWh of the flat load covered hour by hour
+    plus, once per day:
+      load_cost            : cost of buying the flat load at the hub price
+                             (what the data center pays with no VPPA)
     Days with 23 or 25 hours (daylight-saving changes) are left out.
     """
     df = generation.join(price.rename("price"), how="inner")
@@ -64,6 +67,7 @@ def daily_table(price: pd.Series, generation: pd.DataFrame,
         rows[f"{name}_settlement"] = ((df["price"] - strike) * gen).groupby(day).sum()
         rows[f"{name}_mwh"] = gen.groupby(day).sum()
         rows[f"{name}_matched"] = np.minimum(gen, load_mw).groupby(day).sum()
+    rows["load_cost"] = (df["price"] * load_mw).groupby(day).sum()
     out = pd.DataFrame(rows)
     hours = df.groupby(day).size()
     out = out[hours == 24]
