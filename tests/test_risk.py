@@ -122,3 +122,36 @@ def test_annual_costs_matches_hand_calculation():
     a = risk.annual_costs(price, gen, strike=35, load_mw=100).loc[2024]
     assert a["load_cost"] == 100 * 10 + 100 * 50
     assert a["wind_settlement"] == (10 - 35) * 100
+
+
+# --- basis risk -------------------------------------------------------------
+def test_basis_spread_and_summary():
+    t = _hours(4)
+    hub = pd.Series([20.0, 20.0, 20.0, 20.0], t)
+    local = pd.Series([25.0, 15.0, 20.0, 30.0], t)
+    assert risk.basis_spread(local, hub).tolist() == [5.0, -5.0, 0.0, 10.0]
+    s = risk.basis_summary(local, hub).loc[2024]
+    assert s["mean"] == 2.5
+    assert s["share_hours_local_above_hub"] == 0.5
+
+
+def test_generator_basis_cost_weights_by_generation():
+    # Node $10 below hub when the project makes 100 MWh, $5 above when it makes 0.
+    t = _hours(2)
+    hub, node = pd.Series([30.0, 30.0], t), pd.Series([20.0, 35.0], t)
+    gen = pd.Series([100.0, 0.0], t)
+    assert risk.generator_basis_cost(node, hub, gen).loc[2024] == -1000.0
+
+
+def test_load_basis_cost_is_spread_times_load():
+    t = _hours(3)
+    hub, zone = pd.Series([20.0, 20.0, 20.0], t), pd.Series([25.0, 20.0, 18.0], t)
+    assert risk.load_basis_cost(zone, hub, load_mw=100).loc[2024] == (5 + 0 - 2) * 100
+
+
+def test_annual_costs_can_buy_load_at_a_different_price():
+    t = _hours(2)
+    hub, zone = pd.Series([10.0, 50.0], t), pd.Series([12.0, 60.0], t)
+    gen = pd.DataFrame({"wind_mw": [0.0, 0.0]}, t)
+    a = risk.annual_costs(hub, gen, strike=35, load_mw=100, load_price=zone).loc[2024]
+    assert a["load_cost"] == 100 * 12 + 100 * 60

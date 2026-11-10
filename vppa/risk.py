@@ -135,7 +135,68 @@ def shape_cost(price: pd.Series, generation_mw: pd.Series) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 4. VOLUME RISK  (3. basis risk is added in Step 8, once node prices exist)
+# 3. BASIS RISK
+# ---------------------------------------------------------------------------
+# "Basis" = the price difference between two locations on the grid.
+# A VPPA settles at one location (here the HB_WEST hub), but:
+#   - the PROJECT is paid at its own resource node   (generator side)
+#   - the BUYER pays at its own load zone            (buyer side)
+# Transmission congestion makes these prices differ from the hub.
+def basis_spread(local_price: pd.Series, hub_price: pd.Series) -> pd.Series:
+    """Hourly basis: local price minus hub price ($/MWh)."""
+    return (local_price - hub_price).dropna().rename("basis")
+
+
+def basis_summary(local_price: pd.Series, hub_price: pd.Series) -> pd.DataFrame:
+    """Per year: average, median and spread of the hourly basis."""
+    b = basis_spread(local_price, hub_price)
+    g = b.groupby(b.index.year)
+    out = pd.DataFrame({
+        "mean": g.mean(),
+        "median": g.median(),
+        "p5": g.quantile(0.05),
+        "p95": g.quantile(0.95),
+        "share_hours_local_above_hub": (b > 0).groupby(b.index.year).mean(),
+    })
+    out.index.name = "year"
+    return out
+
+
+def generator_basis_cost(node_price: pd.Series, hub_price: pd.Series,
+                         generation_mw: pd.Series) -> pd.Series:
+    """
+    Generator side, per year, buyer's view: how settlement would change
+    if the VPPA settled at the project's node instead of the hub.
+
+        (node - hub) x MWh generated
+
+    Negative = settling at the node would cost the buyer more (node
+    prices below hub, as is common for West Texas wind). In a hub-settled
+    VPPA this risk sits with the PROJECT instead. Pending node data.
+    """
+    b = basis_spread(node_price, hub_price)
+    cost = b * generation_mw.reindex(b.index)
+    return cost.groupby(cost.index.year).sum().rename("generator_basis_cost")
+
+
+def load_basis_cost(load_zone_price: pd.Series, hub_price: pd.Series,
+                    load_mw: float = config.LOAD_MW) -> pd.Series:
+    """
+    Buyer side, per year: extra cost of buying the load at its load zone
+    instead of at the hub price the VPPA settles against.
+
+        (load zone - hub) x load MWh
+
+    Positive = the load zone was more expensive than the hub, so the VPPA
+    under-compensates the buyer. No contract here hedges this gap.
+    """
+    b = basis_spread(load_zone_price, hub_price)
+    cost = b * load_mw
+    return cost.groupby(cost.index.year).sum().rename("load_basis_cost")
+
+
+# ---------------------------------------------------------------------------
+# 4. VOLUME RISK
 # ---------------------------------------------------------------------------
 def monthly_capacity_factor(generation_mw: pd.Series, nameplate_mw: float) -> pd.DataFrame:
     """Capacity factor for every (year, month): rows = years, columns = months."""
@@ -191,15 +252,17 @@ def volume_scenarios(price: pd.Series, generation_mw: pd.Series, nameplate_mw: f
 # ---------------------------------------------------------------------------
 def annual_costs(price: pd.Series, generation: pd.DataFrame,
                  strike: float = config.STRIKE,
-                 load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+                 load_mw: float = config.LOAD_MW,
+                 load_price: pd.Series | None = None) -> pd.DataFrame:
     """
     Historical yearly table in the same layout the Monte Carlo produces:
-    load_cost (buying the flat load at the hub price) and one
-    <project>_settlement column per generation column.
+    load_cost (buying the flat load at `load_price`, default the hub
+    price) and one <project>_settlement column per generation column.
     """
     df = generation.join(price.rename("price"), how="inner")
+    lp = df["price"] if load_price is None else load_price.reindex(df.index)
     year = df.index.year
-    out = pd.DataFrame({"load_cost": (df["price"] * load_mw).groupby(year).sum()})
+    out = pd.DataFrame({"load_cost": (lp * load_mw).groupby(year).sum()})
     for col in generation.columns:
         out[f"{col.replace('_mw', '')}_settlement"] = \
             ((df["price"] - strike) * df[col]).groupby(year).sum()

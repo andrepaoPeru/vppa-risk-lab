@@ -92,8 +92,16 @@ def fetch_hub_prices(year: int, hub: str = config.HUB) -> pd.Series:
 
 
 def load_hub_prices(years=config.YEARS, hub: str = config.HUB) -> pd.Series:
-    """All years stacked into one hourly price series."""
+    """
+    All years stacked into one hourly price series.
+    Works for any hub or load zone in report NP6-785-ER (e.g. LZ_WEST).
+    """
     return pd.concat([fetch_hub_prices(y, hub) for y in years]).sort_index()
+
+
+def load_load_zone_prices(years=config.YEARS, zone: str = config.LOAD_ZONE) -> pd.Series:
+    """Hourly prices at the load zone where the data center buys its power."""
+    return load_hub_prices(years, hub=zone)
 
 
 # ---------------------------------------------------------------------------

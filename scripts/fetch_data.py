@@ -17,6 +17,9 @@ print(f"{config.HUB}: {len(prices):,} hourly prices, "
       f"{prices.index.min()} to {prices.index.max()}")
 print(prices.describe().round(2))
 
+zone = data.load_load_zone_prices()
+print(f"\n{config.LOAD_ZONE}: {len(zone):,} hourly prices")
+
 gen = data.load_system_generation()
 print(f"\nSystem generation: {len(gen):,} hours, "
       f"{gen.index.min()} to {gen.index.max()}")

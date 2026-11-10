@@ -397,3 +397,34 @@ def plot_hedge_effectiveness(sim_annual, hist_annual=None, sizes=None,
              "whiskers = 5th to 95th percentile. A shorter box means a steadier power bill.",
              fontsize=8, color=COLORS["muted"])
     return _save(fig, "09_hedge_effectiveness")
+
+
+def plot_basis_risk(local_price, hub_price, local_name=config.LOAD_ZONE, hub_name=config.HUB):
+    """
+    Basis between a local price (load zone or node) and the hub:
+    left = monthly average spread, right = typical spread by hour of day.
+    """
+    from vppa.risk import basis_spread
+
+    b = basis_spread(local_price, hub_price)
+    monthly = b.resample("MS").mean()
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.3), gridspec_kw={"width_ratios": [1.4, 1]})
+    color = "#6250d6"
+    ax = axes[0]
+    ax.bar(monthly.index, monthly, width=24, color=color)
+    ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+    _style(ax, "Monthly average spread", "$/MWh")
+    ax = axes[1]
+    by_hour = b.groupby(b.index.hour)
+    q10, med, q90 = by_hour.quantile(0.10), by_hour.median(), by_hour.quantile(0.90)
+    ax.fill_between(med.index, q10, q90, color=color, alpha=0.18, label="10th to 90th percentile")
+    ax.plot(med.index, med, color=color, linewidth=2, label="Median")
+    ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+    ax.set_xticks(range(0, 24, 3))
+    ax.set_xlim(0, 23)
+    _style(ax, "Spread by hour of day, 2023-2025", "$/MWh", "Hour of day (Central time)")
+    ax.legend(frameon=False, loc="center", fontsize=8)
+    fig.suptitle(f"Basis: {local_name} minus {hub_name} (positive = {local_name} more expensive)",
+                 x=0.01, ha="left", fontsize=13)
+    fig.tight_layout()
+    return _save(fig, "10_basis_risk")
