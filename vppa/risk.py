@@ -1,0 +1,316 @@
+"""
+Phase 4: risk decomposition. One function (plus one chart in plots.py)
+for each risk the VPPA buyer carries:
+
+    price risk  - the market price level moves
+    shape risk  - generation does not line up hour by hour with the load
+    basis risk  - the project's local price differs from the hub price
+    volume risk - the project produces more or less energy than expected
+
+All settlement figures use the buyer's view from settlement.py:
+positive = project pays buyer, negative = buyer pays project.
+"""
+import numpy as np
+import pandas as pd
+
+from vppa import config
+from vppa.settlement import settle_hourly
+
+
+def _n_years(index: pd.DatetimeIndex) -> int:
+    return index.year.nunique()
+
+
+# ---------------------------------------------------------------------------
+# 1. PRICE RISK
+# ---------------------------------------------------------------------------
+def price_sensitivity(price: pd.Series, generation_mw: pd.Series,
+                      strike: float = config.STRIKE,
+                      shifts=range(-20, 21, 5)) -> pd.DataFrame:
+    """
+    Average annual settlement if every hourly price were $X/MWh higher or lower.
+
+    Because settlement = (price - strike) x MWh, adding $X to every price
+    adds exactly $X x (annual MWh) to annual settlement. So the buyer is
+    "long" its contract volume: price risk per $1/MWh = annual MWh.
+    """
+    years = _n_years(price.index)
+    rows = []
+    for shift in shifts:
+        hourly = settle_hourly(price + shift, generation_mw, strike)
+        rows.append({"price_shift": shift,
+                     "annual_settlement": hourly["settlement"].sum() / years})
+    out = pd.DataFrame(rows).set_index("price_shift")
+    out["dollars_per_1_shift"] = generation_mw.sum() / years   # the slope
+    return out
+
+
+def breakeven_price_shift(price: pd.Series, generation_mw: pd.Series,
+                          strike: float = config.STRIKE) -> float:
+    """
+    How far ($/MWh) all prices would have to move for the contract to net
+    to zero over the period. Equivalently: strike minus capture price.
+    """
+    hourly = settle_hourly(price, generation_mw, strike)
+    return -hourly["settlement"].sum() / hourly["mwh"].sum()
+
+
+def tail_concentration(price: pd.Series, generation_mw: pd.Series,
+                       strike: float = config.STRIKE,
+                       top_share: float = 0.01) -> dict:
+    """
+    How much of the total settlement came from the top 1% highest-price hours.
+    A big number means price risk lives in rare scarcity events, which a
+    simple "average price" view will miss.
+    """
+    hourly = settle_hourly(price, generation_mw, strike)
+    cutoff = hourly["price"].quantile(1 - top_share)
+    top = hourly["price"] >= cutoff
+    return {"price_cutoff": cutoff,
+            "hours": int(top.sum()),
+            "settlement_in_top_hours": hourly.loc[top, "settlement"].sum(),
+            "settlement_in_other_hours": hourly.loc[~top, "settlement"].sum()}
+
+
+# ---------------------------------------------------------------------------
+# 2. SHAPE RISK
+# ---------------------------------------------------------------------------
+def hourly_match(generation_mw: pd.Series,
+                 load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+    """
+    How well the project's output lines up with a flat 24/7 load, per year.
+
+    annual_volume_match : total MWh generated / total MWh consumed.
+                          100% is what "100% renewable" usually means
+                          today (annual matching).
+    hourly_match        : MWh of load actually covered hour by hour /
+                          total load. Output above the load in one hour
+                          cannot cover a shortfall in another hour.
+                          This is the 24/7 carbon-free energy view.
+    hours_fully_covered : share of hours where output >= load.
+    excess_share        : share of generated MWh that exceeded the load
+                          in its hour (sold back to the grid, not "used").
+    """
+    load = pd.Series(load_mw, index=generation_mw.index)
+    matched = np.minimum(generation_mw, load)
+    excess = (generation_mw - load).clip(lower=0)
+    by_year = generation_mw.index.year
+    out = pd.DataFrame({
+        "annual_volume_match": generation_mw.groupby(by_year).sum() / load.groupby(by_year).sum(),
+        "hourly_match": matched.groupby(by_year).sum() / load.groupby(by_year).sum(),
+        "hours_fully_covered": (generation_mw >= load).groupby(by_year).mean(),
+        "excess_share": excess.groupby(by_year).sum() / generation_mw.groupby(by_year).sum(),
+    })
+    out.index.name = "year"
+    return out
+
+
+def match_by_month_hour(generation_mw: pd.Series,
+                        load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+    """Average share of load covered, as a 12 (months) x 24 (hours) table."""
+    covered = np.minimum(generation_mw, load_mw) / load_mw
+    return covered.groupby([covered.index.month, covered.index.hour]).mean().unstack()
+
+
+def shape_cost(price: pd.Series, generation_mw: pd.Series) -> pd.DataFrame:
+    """
+    The dollar cost of WHEN the project generates, per year.
+
+    shape_cost = (hub average price - capture price) x MWh
+
+    It compares the project's energy with the same MWh delivered as a
+    flat block in every hour. Positive = the project's timing is worth
+    less than flat power (it generates mostly in cheap hours).
+    """
+    df = pd.concat({"price": price, "mwh": generation_mw}, axis=1, join="inner")
+    g = df.groupby(df.index.year)
+    hub_avg = g["price"].mean()
+    mwh = g["mwh"].sum()
+    capture = (df["price"] * df["mwh"]).groupby(df.index.year).sum() / mwh
+    out = pd.DataFrame({"hub_avg_price": hub_avg, "capture_price": capture,
+                        "shape_discount_per_mwh": hub_avg - capture,
+                        "shape_cost": (hub_avg - capture) * mwh})
+    out.index.name = "year"
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 3. BASIS RISK
+# ---------------------------------------------------------------------------
+# "Basis" = the price difference between two locations on the grid.
+# A VPPA settles at one location (here the HB_WEST hub), but:
+#   - the PROJECT is paid at its own resource node   (generator side)
+#   - the BUYER pays at its own load zone            (buyer side)
+# Transmission congestion makes these prices differ from the hub.
+def basis_spread(local_price: pd.Series, hub_price: pd.Series) -> pd.Series:
+    """Hourly basis: local price minus hub price ($/MWh)."""
+    return (local_price - hub_price).dropna().rename("basis")
+
+
+def basis_summary(local_price: pd.Series, hub_price: pd.Series) -> pd.DataFrame:
+    """Per year: average, median and spread of the hourly basis."""
+    b = basis_spread(local_price, hub_price)
+    g = b.groupby(b.index.year)
+    out = pd.DataFrame({
+        "mean": g.mean(),
+        "median": g.median(),
+        "p5": g.quantile(0.05),
+        "p95": g.quantile(0.95),
+        "share_hours_local_above_hub": (b > 0).groupby(b.index.year).mean(),
+    })
+    out.index.name = "year"
+    return out
+
+
+def generator_basis_cost(node_price: pd.Series, hub_price: pd.Series,
+                         generation_mw: pd.Series) -> pd.Series:
+    """
+    Generator side, per year, buyer's view: how settlement would change
+    if the VPPA settled at the project's node instead of the hub.
+
+        (node - hub) x MWh generated
+
+    Negative = settling at the node would cost the buyer more (node
+    prices below hub, as is common for West Texas wind). In a hub-settled
+    VPPA this risk sits with the PROJECT instead. Pending node data.
+    """
+    b = basis_spread(node_price, hub_price)
+    cost = b * generation_mw.reindex(b.index)
+    return cost.groupby(cost.index.year).sum().rename("generator_basis_cost")
+
+
+def load_basis_cost(load_zone_price: pd.Series, hub_price: pd.Series,
+                    load_mw: float = config.LOAD_MW) -> pd.Series:
+    """
+    Buyer side, per year: extra cost of buying the load at its load zone
+    instead of at the hub price the VPPA settles against.
+
+        (load zone - hub) x load MWh
+
+    Positive = the load zone was more expensive than the hub, so the VPPA
+    under-compensates the buyer. No contract here hedges this gap.
+    """
+    b = basis_spread(load_zone_price, hub_price)
+    cost = b * load_mw
+    return cost.groupby(cost.index.year).sum().rename("load_basis_cost")
+
+
+# ---------------------------------------------------------------------------
+# 4. VOLUME RISK
+# ---------------------------------------------------------------------------
+def monthly_capacity_factor(generation_mw: pd.Series, nameplate_mw: float) -> pd.DataFrame:
+    """Capacity factor for every (year, month): rows = years, columns = months."""
+    cf = generation_mw.resample("MS").mean() / nameplate_mw
+    return cf.groupby([cf.index.year, cf.index.month]).first().unstack()
+
+
+def low_resource_profile(generation_mw: pd.Series, nameplate_mw: float) -> pd.Series:
+    """
+    A stress-test "bad year": every month is scaled down to the WORST
+    capacity factor observed for that calendar month in the data.
+
+    Example: if the windiest-to-calmest Augusts had CF 30%, 27%, 24%, then
+    every August is scaled to 24%. A January at 40% vs. a worst January
+    of 36% is multiplied by 36/40 = 0.9.
+
+    Hours keep their actual timing and actual prices, so the real
+    hour-by-hour link between output and price is preserved; only the
+    amount of energy shrinks. With only 3 years of history this is a
+    stress scenario, not a statistical P90 (see README limitations).
+    """
+    cf = monthly_capacity_factor(generation_mw, nameplate_mw)
+    factor = cf.min(axis=0) / cf                   # (year, month) scaling factors, all <= 1
+    idx = generation_mw.index
+    hourly_factor = factor.stack().reindex(list(zip(idx.year, idx.month))).to_numpy()
+    return generation_mw * hourly_factor
+
+
+def volume_scenarios(price: pd.Series, generation_mw: pd.Series, nameplate_mw: float,
+                     strike: float = config.STRIKE,
+                     load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+    """
+    Compare the actual history with the low-resource year on the three
+    things the buyer cares about: energy (and RECs), money, and coverage.
+    """
+    scenarios = {"base": generation_mw,
+                 "low_resource": low_resource_profile(generation_mw, nameplate_mw)}
+    years = _n_years(price.index)
+    rows = {}
+    for name, gen in scenarios.items():
+        hourly = settle_hourly(price, gen, strike)
+        rows[name] = {
+            "annual_mwh": gen.sum() / years,
+            "capacity_factor": gen.mean() / nameplate_mw,
+            "annual_settlement": hourly["settlement"].sum() / years,
+            "hourly_match": hourly_match(gen, load_mw)["hourly_match"].mean(),
+        }
+    return pd.DataFrame(rows).T
+
+
+# ---------------------------------------------------------------------------
+# 5. HEDGE EFFECTIVENESS - does the VPPA make the buyer's power bill steadier?
+# ---------------------------------------------------------------------------
+def annual_costs(price: pd.Series, generation: pd.DataFrame,
+                 strike: float = config.STRIKE,
+                 load_mw: float = config.LOAD_MW,
+                 load_price: pd.Series | None = None) -> pd.DataFrame:
+    """
+    Historical yearly table in the same layout the Monte Carlo produces:
+    load_cost (buying the flat load at `load_price`, default the hub
+    price) and one <project>_settlement column per generation column.
+    """
+    df = generation.join(price.rename("price"), how="inner")
+    lp = df["price"] if load_price is None else load_price.reindex(df.index)
+    year = df.index.year
+    out = pd.DataFrame({"load_cost": (lp * load_mw).groupby(year).sum()})
+    for col in generation.columns:
+        out[f"{col.replace('_mw', '')}_settlement"] = \
+            ((df["price"] - strike) * df[col]).groupby(year).sum()
+    out.index.name = "year"
+    return out
+
+
+def net_costs(annual: pd.DataFrame) -> pd.DataFrame:
+    """
+    The buyer's all-in annual power cost with each VPPA:
+
+        net cost = cost of buying the load at market - VPPA settlement
+
+    Settlement is positive when the project pays the buyer, so a payout
+    lowers the net cost. Column "no_vppa" is the unhedged cost.
+    """
+    out = pd.DataFrame({"no_vppa": annual["load_cost"]})
+    for col in annual.columns:
+        if col.endswith("_settlement"):
+            out[col.replace("_settlement", "")] = annual["load_cost"] - annual[col]
+    return out
+
+
+def hedge_effectiveness(annual: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
+    """
+    Compare the buyer's annual power cost with and without each VPPA.
+
+    A hedge is judged by how much it STEADIES the total cost, not by
+    whether the contract itself makes money.
+
+      mean_cost         : average annual cost
+      std_cost          : year-to-year swing (standard deviation)
+      std_reduction     : share of the unhedged swing removed (1.0 = perfect hedge)
+      cost_p95          : a 1-in-20 expensive year
+      worst_case_saving : how much lower that 1-in-20 cost is than with no VPPA
+      hedge_premium     : extra average cost of hedging (+ = the hedge costs money)
+    """
+    costs = net_costs(annual)
+    base = costs["no_vppa"]
+    rows = {}
+    for name in costs.columns:
+        c = costs[name]
+        rows[name] = {
+            "mean_cost": c.mean(),
+            "std_cost": c.std(),
+            "std_reduction": 1 - c.std() / base.std(),
+            "cost_p95": c.quantile(confidence),
+            "worst_case_saving": base.quantile(confidence) - c.quantile(confidence),
+            "hedge_premium": c.mean() - base.mean(),
+        }
+    return pd.DataFrame(rows).T

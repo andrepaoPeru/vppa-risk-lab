@@ -16,11 +16,13 @@ from pathlib import Path
 HUB = "HB_WEST"
 
 # The resource node where our hypothetical projects inject power.
-# Chosen in Step 2 after looking at the list of West Texas nodes.
+# Pending: needs the ERCOT Public API (Step 2). None = not available yet.
 NODE = None
 
-# Fallback "local" price if node data is unavailable: the West load zone.
-LOAD_ZONE_FALLBACK = "LZ_WEST"
+# The load zone where the data center buys its power. A West Texas load
+# pays the LZ_WEST price, while the VPPA settles at HB_WEST: that gap is
+# the buyer's side of basis risk.
+LOAD_ZONE = "LZ_WEST"
 
 # Three full calendar years of history.
 YEARS = [2023, 2024, 2025]
@@ -44,3 +46,10 @@ STRIKE = 35.0
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"          # parquet cache (git-ignored)
 FIGURES_DIR = ROOT / "figures"    # charts used in the README
+
+# ---------------------------------------------------------------------------
+# Hypothetical battery paired with the solar project (Step 11)
+# ---------------------------------------------------------------------------
+BATTERY_MW = 100.0          # maximum charge / discharge rate
+BATTERY_MWH = 400.0         # storage size: 4 hours at full power
+BATTERY_EFFICIENCY = 0.85   # round trip: 100 MWh in -> 85 MWh back out
