@@ -47,18 +47,21 @@ DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 def daily_table(price: pd.Series, generation: pd.DataFrame,
                 strike: float = config.STRIKE,
-                load_mw: float = config.LOAD_MW) -> pd.DataFrame:
+                load_mw: float = config.LOAD_MW,
+                load_price: pd.Series | None = None) -> pd.DataFrame:
     """
     One row per historical day with that day's totals, for each project:
       <project>_settlement : sum over 24 hours of (price - strike) x MWh
       <project>_mwh        : energy generated
       <project>_matched    : MWh of the flat load covered hour by hour
     plus, once per day:
-      load_cost            : cost of buying the flat load at the hub price
-                             (what the data center pays with no VPPA)
+      load_cost            : cost of buying the flat load (what the data
+                             center pays with no VPPA), at `load_price` if
+                             given (e.g. its load zone), else at the hub price
     Days with 23 or 25 hours (daylight-saving changes) are left out.
     """
     df = generation.join(price.rename("price"), how="inner")
+    df["load_price"] = df["price"] if load_price is None else load_price.reindex(df.index)
     day = df.index.date
     rows = {}
     for col in generation.columns:
@@ -67,7 +70,7 @@ def daily_table(price: pd.Series, generation: pd.DataFrame,
         rows[f"{name}_settlement"] = ((df["price"] - strike) * gen).groupby(day).sum()
         rows[f"{name}_mwh"] = gen.groupby(day).sum()
         rows[f"{name}_matched"] = np.minimum(gen, load_mw).groupby(day).sum()
-    rows["load_cost"] = (df["price"] * load_mw).groupby(day).sum()
+    rows["load_cost"] = (df["load_price"] * load_mw).groupby(day).sum()
     out = pd.DataFrame(rows)
     hours = df.groupby(day).size()
     out = out[hours == 24]
@@ -149,12 +152,13 @@ def risk_metrics(annual_settlement, monthly_settlement=None,
 
 def run(price: pd.Series, generation: pd.DataFrame,
         strike: float = config.STRIKE, n_years: int = 10_000,
-        seed: int = 42, load_mw: float = config.LOAD_MW) -> tuple:
+        seed: int = 42, load_mw: float = config.LOAD_MW,
+        load_price: pd.Series | None = None) -> tuple:
     """
     Full Monte Carlo for every project column.
     Returns (summary table, simulated annual results).
     """
-    daily = daily_table(price, generation, strike, load_mw)
+    daily = daily_table(price, generation, strike, load_mw, load_price)
     sims = simulate_years(daily, n_years, seed)
     annual, monthly = sims["annual"], sims["monthly"]
     rows = {}

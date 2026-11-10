@@ -16,11 +16,13 @@ from pathlib import Path
 HUB = "HB_WEST"
 
 # The resource node where our hypothetical projects inject power.
-# Chosen in Step 2 after looking at the list of West Texas nodes.
+# Pending: needs the ERCOT Public API (Step 2). None = not available yet.
 NODE = None
 
-# Fallback "local" price if node data is unavailable: the West load zone.
-LOAD_ZONE_FALLBACK = "LZ_WEST"
+# The load zone where the data center buys its power. A West Texas load
+# pays the LZ_WEST price, while the VPPA settles at HB_WEST: that gap is
+# the buyer's side of basis risk.
+LOAD_ZONE = "LZ_WEST"
 
 # Three full calendar years of history.
 YEARS = [2023, 2024, 2025]

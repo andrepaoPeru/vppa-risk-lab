@@ -1,7 +1,7 @@
 # vppa-risk-lab
 
 Risk analytics for a hypothetical **virtual power purchase agreement (VPPA)** serving a **24/7 data center in ERCOT** (Texas).
-Hourly settlement backtest, price / shape / volume risk (basis risk in progress), a Monte Carlo of cash flow at risk,
+Hourly settlement backtest, price / shape / basis / volume risk, a Monte Carlo of cash flow at risk,
 a solar vs. wind vs. blend vs. solar + battery comparison, and a test of whether the VPPA actually hedges the buyer's power bill.
 
 Built with **public ERCOT data only**. All projects, contract terms and the data center are hypothetical.
@@ -78,10 +78,11 @@ All public, downloaded with [`scripts/fetch_data.py`](scripts/fetch_data.py) and
 
 | Data | Source | Notes |
 |---|---|---|
-| Hourly prices at **HB_WEST**, 2023-2025 | ERCOT report [NP6-785-ER](https://www.ercot.com/mp/data-products/data-product-details?id=NP6-785-ER), Historical RTM Load Zone and Hub Prices, via [`gridstatus`](https://github.com/gridstatus/gridstatus) | 15-minute real-time prices averaged to hourly |
+| Hourly prices at **HB_WEST** (the hub the VPPA settles at), 2023-2025 | ERCOT report [NP6-785-ER](https://www.ercot.com/mp/data-products/data-product-details?id=NP6-785-ER), Historical RTM Load Zone and Hub Prices, via [`gridstatus`](https://github.com/gridstatus/gridstatus) | 15-minute real-time prices averaged to hourly |
 | Hourly ERCOT-wide solar and wind output | ERCOT [Interval Generation by Fuel](https://www.ercot.com/gridinfo/generation) annual workbooks | Annual totals reconcile exactly with ERCOT's own daily totals |
 | Installed solar and wind capacity | ERCOT [Capacity Changes by Fuel Type](https://www.ercot.com/gridinfo/resource) | Year-end values, recorded in `vppa/profiles.py` |
-| Resource-node prices *(pending)* | ERCOT Public API (free account) | Needed for basis risk |
+| Hourly prices at **LZ_WEST** (the data center's load zone) | Same ERCOT report NP6-785-ER | Buyer-side basis risk |
+| Resource-node prices *(pending)* | ERCOT Public API (free account) | Generator-side basis risk |
 
 ## 4. Method
 
@@ -90,7 +91,7 @@ All public, downloaded with [`scripts/fetch_data.py`](scripts/fetch_data.py) and
 | Data | `vppa/data.py` | Downloads and caches prices and generation; handles daylight-saving days |
 | Proxy projects | `vppa/profiles.py` | Scales ERCOT-wide output to 200 MW projects using hourly **capacity factor** (output / installed capacity), so fleet growth is not mistaken for weather |
 | Backtest | `vppa/settlement.py` | Hourly settlement, monthly and annual totals, **capture price** (generation-weighted price) and negative-price hours |
-| Risk decomposition | `vppa/risk.py` | Price sensitivity and tail concentration; hourly vs. annual matching and shape cost; low-resource year; hedge effectiveness |
+| Risk decomposition | `vppa/risk.py` | Price sensitivity and tail concentration; hourly vs. annual matching and shape cost; basis (load zone or node vs. hub); low-resource year; hedge effectiveness |
 | Monte Carlo | `vppa/montecarlo.py` | 10,000 simulated years with a **two-step bootstrap**: for each month pick one historical year's version (keeps its regime), then draw whole real days from it (keeps price and generation paired) |
 | Portfolio | `vppa/portfolio.py` | Solar, wind, 50/50 blend, and solar + 4-hour battery; each **sized to produce 100% of annual use** (size = load / capacity factor) so they differ only in *when* energy arrives |
 | Charts | `vppa/plots.py` | One function per chart, saved to `figures/` |
@@ -118,6 +119,11 @@ afternoons, exactly when wind is weakest.
 **Monte Carlo: 10,000 simulated years.** Triangles are the actual 2023-2025 results.
 
 ![Monte Carlo](figures/07_monte_carlo.png)
+
+**Basis risk, buyer side.** The data center pays LZ_WEST, but the VPPA settles at HB_WEST. LZ_WEST was usually
+more expensive, especially at night when West Texas wind congests the transmission lines.
+
+![Basis risk](figures/10_basis_risk.png)
 
 **Portfolio comparison, each option sized to 100% of annual use.**
 
@@ -159,17 +165,21 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
    **Wind alone** is the most predictable contract but the most costly, and it hedges the bill less well than the blend.
 5. **Solar + battery over-hedges.** As sized here, it pushes so much energy into scarcity hours that the bill swings the
    other way (about $10M in 2023 vs. $34M in 2025). A smaller battery, or storage added to the blend, is the next test.
-6. **Volume risk is not only about money.** When prices are mostly below strike, a calm year *reduces* VPPA payments,
+6. **Location costs the buyer about $8M a year that the VPPA does not hedge.** The data center's load zone (LZ_WEST)
+   averaged about $8-10/MWh above the HB_WEST hub, adding $7.3-8.8M a year to a 100 MW load's bill. Buying at
+   LZ_WEST raises the unhedged average bill from $32.0M to $40.1M, and the blend then removes about 78% of the
+   year-to-year swing instead of 85%, because the VPPA tracks the hub while the bill follows the load zone.
+7. **Volume risk is not only about money.** When prices are mostly below strike, a calm year *reduces* VPPA payments,
    but it still cuts RECs and hourly match and weakens the hedge.
-7. **The hedge only exists if the buyer pays market prices.** With a fixed-price retail contract, the same VPPA adds risk.
+8. **The hedge only exists if the buyer pays market prices.** With a fixed-price retail contract, the same VPPA adds risk.
 
 ## 7. Limitations
 
-- **Hedge assumption:** the data center is assumed to buy at the HB_WEST price. A real West Texas load pays its load
-  zone price (LZ_WEST) plus wires and retail charges, and may have a fixed-price retail contract, in which case the
-  VPPA is not a hedge.
-- **Basis risk is pending:** all settlement is at the hub. West Texas wind nodes often price below the hub, which could
-  change the ranking.
+- **Hedge assumption:** the main results assume the data center buys at the HB_WEST price; a load-zone (LZ_WEST)
+  version is in the notebook. Wires and retail charges are excluded, and with a fixed-price retail contract the VPPA
+  would not be a hedge at all.
+- **Generator-side basis is pending:** all VPPA settlement is at the hub, and node prices need the ERCOT Public API.
+  West Texas wind nodes often price below the hub; in a hub-settled contract that risk sits with the project.
 - **Proxy generation:** profiles are ERCOT-wide output scaled to 200 MW. A statewide fleet is smoother than one plant,
   so shape and volume risk are probably understated. Metered output also excludes curtailed energy.
 - **Installed capacity** is known only at year ends and interpolated linearly between them.
@@ -182,7 +192,7 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
 
 ## 8. Next steps
 
-1. **Basis risk:** add a West Texas wind resource node and measure the cost of node vs. hub settlement.
+1. **Generator-side basis:** add a West Texas wind resource node and measure the cost of node vs. hub settlement.
 2. **Smaller battery and blend + storage:** find the storage size that steadies the bill instead of over-hedging.
 3. **Strike sensitivity:** chart hedge cost and hedge effectiveness across strikes.
 4. **Second market:** extend to **PJM** (mid-Atlantic, the largest US data center market) or **CAISO** (California,
@@ -196,7 +206,7 @@ git clone https://github.com/andrepaoPeru/vppa-risk-lab.git
 cd vppa-risk-lab
 pip install -r requirements.txt
 python scripts/fetch_data.py          # first run downloads ~3 years of ERCOT data (a few minutes)
-python -m pytest                      # 41 tests of the settlement, risk, Monte Carlo and battery math
+python -m pytest                      # 45 tests of the settlement, risk, Monte Carlo and battery math
 jupyter notebook notebooks/vppa_story.ipynb
 ```
 
