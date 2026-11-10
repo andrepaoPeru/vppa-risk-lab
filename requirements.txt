@@ -4,6 +4,5 @@ pandas==2.3.3
 numpy==2.5.3
 matplotlib==3.11.2
 pyarrow==26.0.1         # lets pandas read/write parquet files
-python-dotenv           # loads API keys from a local .env file
 pytest==9.2.0
 jupyter
