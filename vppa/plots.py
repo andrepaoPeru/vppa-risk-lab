@@ -5,6 +5,7 @@ Colors are fixed per entity across the whole project so a reader never
 has to re-learn them: solar = orange, wind = blue, data center load = gray.
 """
 import matplotlib
+import matplotlib.dates
 import numpy as np
 import pandas as pd
 
@@ -453,7 +454,10 @@ def plot_generator_basis(node_price, hub_price, wind_mw, node_name=config.NODE,
             marker="o", markersize=3, label="Plain average over all hours")
     ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
     _style(ax, "Monthly basis", "$/MWh")
-    ax.legend(frameon=False, loc="lower left", fontsize=8)
+    ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(bymonth=[1, 7]))
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%b %Y"))
+    ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.12),
+              ncol=2, fontsize=8)
 
     ax = axes[1]
     edges = np.linspace(0, 1, 11)
