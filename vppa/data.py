@@ -182,3 +182,49 @@ def fetch_system_generation(year: int) -> pd.DataFrame:
 def load_system_generation(years=config.YEARS) -> pd.DataFrame:
     """All years of hourly system solar and wind output stacked together."""
     return pd.concat([fetch_system_generation(y) for y in years]).sort_index()
+
+
+# ---------------------------------------------------------------------------
+# Resource-node prices (ERCOT Public API, free account)
+# ---------------------------------------------------------------------------
+def fetch_node_prices(year: int) -> pd.DataFrame:
+    """
+    Hourly real-time prices ($/MWh) for one year at every West Texas wind
+    resource node in ercot_api.WEST_WIND_NODES, plus HB_WEST for checking.
+    One column per settlement point, indexed by hour (Central time).
+
+    Needs ERCOT API credentials the first time (see vppa/ercot_api.py).
+    2023 is read from ~35,000 archived files, so it takes a while.
+    """
+    from vppa import ercot_api
+
+    path = _cache_path(f"node_prices_west_wind_{year}")
+    if path.exists():
+        return pd.read_parquet(path)
+
+    print(f"Downloading ERCOT resource-node prices for {year} (Public API)...")
+    points = ercot_api.WEST_WIND_NODES + [config.HUB]
+    raw = ercot_api.download_year(year, points)
+    hourly = pd.concat({p: to_hourly(g) for p, g in raw.groupby("point")}, axis=1)
+    hourly.to_parquet(path)
+    return hourly
+
+
+def load_node_prices(years=config.YEARS, node: str = config.NODE) -> pd.Series:
+    """
+    Hourly real-time prices at one resource node, all years stacked.
+
+    Also accepts node=config.HUB: HB_WEST from the SAME API download. Use
+    that as the hub when measuring node basis. ERCOT corrects prices
+    after the fact on a few stressed days; the API keeps the original
+    15-minute postings while the yearly hub file has corrected values, so
+    mixing the two sources would show basis that never existed.
+    """
+    if node is None:
+        raise ValueError("Set config.NODE to a resource node name first.")
+    frames = [fetch_node_prices(y) for y in years]
+    missing = [y for y, f in zip(years, frames) if node not in f.columns]
+    if missing:
+        raise ValueError(f"No prices for {node} in {missing}; "
+                         "pick a node from ercot_api.WEST_WIND_NODES that existed in every year.")
+    return pd.concat([f[node] for f in frames]).sort_index().dropna().rename("price")

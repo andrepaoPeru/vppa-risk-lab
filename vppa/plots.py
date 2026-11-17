@@ -6,6 +6,7 @@ has to re-learn them: solar = orange, wind = blue, data center load = gray.
 """
 import matplotlib
 import numpy as np
+import pandas as pd
 
 matplotlib.use("Agg")            # draw to files, no screen needed
 import matplotlib.pyplot as plt
@@ -428,3 +429,48 @@ def plot_basis_risk(local_price, hub_price, local_name=config.LOAD_ZONE, hub_nam
                  x=0.01, ha="left", fontsize=13)
     fig.tight_layout()
     return _save(fig, "10_basis_risk")
+
+
+def plot_generator_basis(node_price, hub_price, wind_mw, node_name=config.NODE,
+                         hub_name=config.HUB, nameplate_mw=config.WIND_MW):
+    """
+    Generator-side basis for the wind project:
+    left  = monthly basis, plain average vs weighted by wind output;
+    right = basis by how hard the project is running (output buckets).
+    """
+    from vppa.risk import basis_spread
+
+    b = basis_spread(node_price, hub_price)
+    gen = wind_mw.reindex(b.index)
+    monthly_avg = b.resample("MS").mean()
+    monthly_wtd = (b * gen).resample("MS").sum() / gen.resample("MS").sum()
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.3), gridspec_kw={"width_ratios": [1.4, 1]})
+    ax = axes[0]
+    ax.bar(monthly_wtd.index, monthly_wtd, width=24, color=COLORS["wind"],
+           label="Weighted by wind output (what the project earns)")
+    ax.plot(monthly_avg.index, monthly_avg, color=COLORS["load"], linewidth=1.5,
+            marker="o", markersize=3, label="Plain average over all hours")
+    ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+    _style(ax, "Monthly basis", "$/MWh")
+    ax.legend(frameon=False, loc="lower left", fontsize=8)
+
+    ax = axes[1]
+    edges = np.linspace(0, 1, 11)
+    bucket = pd.cut(gen / nameplate_mw, edges, include_lowest=True)
+    by = b.groupby(bucket, observed=True)
+    mids = [100 * (iv.left + iv.right) / 2 for iv in by.median().index]
+    ax.fill_between(mids, by.quantile(0.10), by.quantile(0.90), color=COLORS["wind"],
+                    alpha=0.18, label="10th to 90th percentile")
+    ax.plot(mids, by.median(), color=COLORS["wind"], linewidth=2, marker="o",
+            markersize=3, label="Median")
+    ax.plot(mids, by.mean(), color=COLORS["wind"], linewidth=1, linestyle="--", label="Mean")
+    ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
+    ax.set_xlim(0, 100)
+    _style(ax, "Basis vs. how hard the wind is blowing", "$/MWh",
+           "Wind project output (% of nameplate)")
+    ax.legend(frameon=False, loc="lower left", fontsize=8)
+    fig.suptitle(f"Generator-side basis: {node_name} minus {hub_name} "
+                 f"(negative = node paid less than the hub)", x=0.01, ha="left", fontsize=13)
+    fig.tight_layout()
+    return _save(fig, "10b_generator_basis")
