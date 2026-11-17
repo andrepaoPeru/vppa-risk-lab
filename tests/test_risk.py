@@ -143,6 +143,18 @@ def test_generator_basis_cost_weights_by_generation():
     assert risk.generator_basis_cost(node, hub, gen).loc[2024] == -1000.0
 
 
+def test_generator_basis_summary_weights_toward_windy_hours():
+    # Same two hours: plain average basis is -2.5, but all output came in
+    # the -10 hour, so the generation-weighted basis is -10.
+    t = _hours(2)
+    hub, node = pd.Series([30.0, 30.0], t), pd.Series([20.0, 35.0], t)
+    gen = pd.Series([100.0, 0.0], t)
+    s = risk.generator_basis_summary(node, hub, gen).loc[2024]
+    assert s["time_avg_basis"] == -2.5
+    assert s["gen_weighted_basis"] == -10.0
+    assert s["cost_musd"] == -0.001
+
+
 def test_load_basis_cost_is_spread_times_load():
     t = _hours(3)
     hub, zone = pd.Series([20.0, 20.0, 20.0], t), pd.Series([25.0, 20.0, 18.0], t)
