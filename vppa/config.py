@@ -15,9 +15,12 @@ from pathlib import Path
 # many West Texas nodes, and the usual reference price for wind/solar PPAs there.
 HUB = "HB_WEST"
 
-# The resource node where our hypothetical projects inject power.
-# Pending: needs the ERCOT Public API (Step 2). None = not available yet.
-NODE = None
+# The resource node where the hypothetical WIND project injects power.
+# BRISCOE_WIND: a Panhandle wind farm (Briscoe County). Panhandle wind
+# exports south over congested lines, so its node usually prices below
+# HB_WEST - the classic generator-side basis risk. Any name in
+# ercot_api.WEST_WIND_NODES works here without downloading again.
+NODE = "BRISCOE_WIND"
 
 # The load zone where the data center buys its power. A West Texas load
 # pays the LZ_WEST price, while the VPPA settles at HB_WEST: that gap is

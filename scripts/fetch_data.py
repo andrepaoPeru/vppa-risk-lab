@@ -24,3 +24,12 @@ gen = data.load_system_generation()
 print(f"\nSystem generation: {len(gen):,} hours, "
       f"{gen.index.min()} to {gen.index.max()}")
 print(gen.describe().round(0))
+
+# Resource-node prices need a free ERCOT Public API account (see README).
+import os
+if all(os.environ.get(k) for k in ("ERCOT_API_USERNAME", "ERCOT_API_PASSWORD",
+                                   "ERCOT_PUBLIC_API_SUBSCRIPTION_KEY")):
+    node = data.load_node_prices()
+    print(f"\n{config.NODE}: {len(node):,} hourly prices, mean ${node.mean():.2f}/MWh")
+else:
+    print("\nSkipping resource-node prices: ERCOT API credentials not set.")
