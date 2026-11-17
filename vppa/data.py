@@ -211,10 +211,20 @@ def fetch_node_prices(year: int) -> pd.DataFrame:
 
 
 def load_node_prices(years=config.YEARS, node: str = config.NODE) -> pd.Series:
-    """Hourly real-time prices at one resource node, all years stacked."""
+    """
+    Hourly real-time prices at one resource node, all years stacked.
+
+    Also accepts node=config.HUB: HB_WEST from the SAME API download. Use
+    that as the hub when measuring node basis. ERCOT corrects prices
+    after the fact on a few stressed days; the API keeps the original
+    15-minute postings while the yearly hub file has corrected values, so
+    mixing the two sources would show basis that never existed.
+    """
     if node is None:
         raise ValueError("Set config.NODE to a resource node name first.")
     frames = [fetch_node_prices(y) for y in years]
-    if node not in frames[0].columns:
-        raise ValueError(f"{node} is not in the node cache; see ercot_api.WEST_WIND_NODES.")
+    missing = [y for y, f in zip(years, frames) if node not in f.columns]
+    if missing:
+        raise ValueError(f"No prices for {node} in {missing}; "
+                         "pick a node from ercot_api.WEST_WIND_NODES that existed in every year.")
     return pd.concat([f[node] for f in frames]).sort_index().dropna().rename("price")

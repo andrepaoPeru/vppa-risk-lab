@@ -82,7 +82,7 @@ All public, downloaded with [`scripts/fetch_data.py`](scripts/fetch_data.py) and
 | Hourly ERCOT-wide solar and wind output | ERCOT [Interval Generation by Fuel](https://www.ercot.com/gridinfo/generation) annual workbooks | Annual totals reconcile exactly with ERCOT's own daily totals |
 | Installed solar and wind capacity | ERCOT [Capacity Changes by Fuel Type](https://www.ercot.com/gridinfo/resource) | Year-end values, recorded in `vppa/profiles.py` |
 | Hourly prices at **LZ_WEST** (the data center's load zone) | Same ERCOT report NP6-785-ER | Buyer-side basis risk |
-| Resource-node prices *(pending)* | ERCOT Public API (free account) | Generator-side basis risk |
+| Hourly prices at **BRISCOE_WIND** (the wind project's resource node) and 52 other West Texas wind nodes | ERCOT report [NP6-905-CD](https://www.ercot.com/mp/data-products/data-product-details?id=NP6-905-CD) via the [ERCOT Public API](https://apiexplorer.ercot.com) (free account); 2023 from ~33,000 archived 15-minute files | Generator-side basis risk; compared with HB_WEST from the same download so after-the-fact price corrections do not show up as basis |
 
 ## 4. Method
 
@@ -178,8 +178,10 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
 - **Hedge assumption:** the main results assume the data center buys at the HB_WEST price; a load-zone (LZ_WEST)
   version is in the notebook. Wires and retail charges are excluded, and with a fixed-price retail contract the VPPA
   would not be a hedge at all.
-- **Generator-side basis is pending:** all VPPA settlement is at the hub, and node prices need the ERCOT Public API.
-  West Texas wind nodes often price below the hub; in a hub-settled contract that risk sits with the project.
+- **Generator-side basis is measured but not priced into the contract:** the VPPA settles at the hub, so the node
+  discount is the project's loss. A real developer would raise the strike to cover it; that is not modeled.
+- **Node vs. proxy output:** the node is a real Panhandle wind farm, but its output is the statewide wind proxy.
+  A Panhandle plant blows hardest exactly when its node is most congested, so the true discount is probably larger.
 - **Proxy generation:** profiles are ERCOT-wide output scaled to 200 MW. A statewide fleet is smoother than one plant,
   so shape and volume risk are probably understated. Metered output also excludes curtailed energy.
 - **Installed capacity** is known only at year ends and interpolated linearly between them.
@@ -192,7 +194,7 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
 
 ## 8. Next steps
 
-1. **Generator-side basis:** add a West Texas wind resource node and measure the cost of node vs. hub settlement.
+1. **Node-settled VPPA:** re-run the backtest and Monte Carlo with settlement at BRISCOE_WIND, moving basis to the buyer.
 2. **Smaller battery and blend + storage:** find the storage size that steadies the bill instead of over-hedging.
 3. **Strike sensitivity:** chart hedge cost and hedge effectiveness across strikes.
 4. **Second market:** extend to **PJM** (mid-Atlantic, the largest US data center market) or **CAISO** (California,
@@ -206,11 +208,16 @@ git clone https://github.com/andrepaoPeru/vppa-risk-lab.git
 cd vppa-risk-lab
 pip install -r requirements.txt
 python scripts/fetch_data.py          # first run downloads ~3 years of ERCOT data (a few minutes)
-python -m pytest                      # 45 tests of the settlement, risk, Monte Carlo and battery math
+python -m pytest                      # 50 tests of the settlement, risk, Monte Carlo, battery and API parsing
 jupyter notebook notebooks/vppa_story.ipynb
 ```
 
-Change any assumption (hub, years, project sizes, load, strike, battery) in [`vppa/config.py`](vppa/config.py),
+Node prices (generator-side basis) need a free [ERCOT Public API](https://apiexplorer.ercot.com) account. Set
+`ERCOT_API_USERNAME`, `ERCOT_API_PASSWORD` and `ERCOT_PUBLIC_API_SUBSCRIPTION_KEY` as environment variables before
+running `fetch_data.py`; without them that step is skipped. 2023 node prices come from ~33,000 archived files and
+take about an hour the first time; an interrupted download resumes where it stopped.
+
+Change any assumption (hub, years, project sizes, load, strike, battery, wind node) in [`vppa/config.py`](vppa/config.py),
 or set `STRIKE` in the notebook's first cell. Tested with Python 3.13.
 
 ```

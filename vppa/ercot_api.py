@@ -96,11 +96,18 @@ class ErcotSession:
 
     def request(self, method, url, attempts=6, **kwargs):
         """GET/POST with re-sign-in after 50 minutes and back-off on 403/429/5xx
-        (ERCOT sometimes answers a rate limit with 403)."""
+        (ERCOT sometimes answers a rate limit with 403) or a dropped connection."""
         for attempt in range(attempts):
             if time.time() - self.token_time > 50 * 60:
                 self._sign_in()
-            r = self.http.request(method, url, timeout=300, **kwargs)
+            try:
+                r = self.http.request(method, url, timeout=300, **kwargs)
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt == attempts - 1:
+                    raise
+                print(f"  connection dropped, retrying (attempt {attempt + 1})...")
+                time.sleep(min(60, 5 * 2 ** attempt))
+                continue
             if r.status_code == 401:
                 self._sign_in()
             elif r.status_code in (403, 429) or r.status_code >= 500:
@@ -179,11 +186,23 @@ def _archive_prices(api: ErcotSession, year: int, points: list) -> pd.DataFrame:
     # little past the end of the window and keep only the delivery dates wanted.
     ids = _archive_doc_ids(api, f"{year}-01-01T00:00:00",
                            (end + pd.Timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S"))
+    ids = sorted(ids)
     print(f"  {len(ids):,} archived 15-minute files to read")
+    # Each batch is saved as it arrives, so an interrupted download resumes
+    # where it stopped instead of starting the year over.
+    parts_dir = config.DATA_DIR / f"_archive_parts_{year}"
+    parts_dir.mkdir(parents=True, exist_ok=True)
     frames = []
     for i in range(0, len(ids), 1000):               # bulk download: up to 1,000 files per request
-        r = api.request("POST", f"{ARCHIVE_URL}/download", json={"docIds": ids[i:i + 1000]})
-        frames.append(_read_archive_zip(r.content, set(points)))
+        batch = ids[i:i + 1000]
+        part = parts_dir / f"{batch[0]}_{batch[-1]}.parquet"
+        if part.exists():
+            frames.append(pd.read_parquet(part))
+            continue
+        r = api.request("POST", f"{ARCHIVE_URL}/download", json={"docIds": batch})
+        df = _read_archive_zip(r.content, set(points))
+        df.to_parquet(part)
+        frames.append(df)
         print(f"  {min(i + 1000, len(ids)):,} / {len(ids):,} files")
     df = pd.concat(frames, ignore_index=True)
     keep = (df["DeliveryDate"] >= f"{year}-01-01") & (df["DeliveryDate"] < end)
