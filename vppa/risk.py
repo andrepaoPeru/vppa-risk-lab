@@ -170,13 +170,40 @@ def generator_basis_cost(node_price: pd.Series, hub_price: pd.Series,
 
         (node - hub) x MWh generated
 
-    Negative = settling at the node would cost the buyer more (node
-    prices below hub, as is common for West Texas wind). In a hub-settled
-    VPPA this risk sits with the PROJECT instead. Pending node data.
+    Negative = the project earned less at its node than the hub price the
+    VPPA settles on (node prices below hub, as is common for West Texas
+    wind). In a hub-settled VPPA this is the PROJECT's loss; if the
+    contract settled at the node instead, it would move to the buyer.
     """
     b = basis_spread(node_price, hub_price)
     cost = b * generation_mw.reindex(b.index)
     return cost.groupby(cost.index.year).sum().rename("generator_basis_cost")
+
+
+def generator_basis_summary(node_price: pd.Series, hub_price: pd.Series,
+                            generation_mw: pd.Series) -> pd.DataFrame:
+    """
+    Per year: why the generation-weighted basis is worse than the plain
+    average. Wind blows hardest when the lines out of West Texas are
+    congested, so the node discount is deepest in the hours the project
+    actually produces.
+
+      time_avg_basis      simple average of hourly (node - hub), $/MWh
+      gen_weighted_basis  same, weighted by the project's output, $/MWh
+      cost_musd           generator_basis_cost in $ million
+    """
+    b = basis_spread(node_price, hub_price)
+    gen = generation_mw.reindex(b.index)
+    cost = generator_basis_cost(node_price, hub_price, generation_mw)
+    mwh = gen.groupby(gen.index.year).sum()
+    out = pd.DataFrame({
+        "mwh": mwh,
+        "time_avg_basis": b.groupby(b.index.year).mean(),
+        "gen_weighted_basis": cost / mwh,
+        "cost_musd": cost / 1e6,
+    })
+    out.index.name = "year"
+    return out
 
 
 def load_basis_cost(load_zone_price: pd.Series, hub_price: pd.Series,
