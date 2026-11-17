@@ -229,17 +229,4 @@ vppa-risk-lab/
 └── figures/           # charts used here and in the notebook
 ```
 
-## 10. Further reading
-
-- EPA Green Power Partnership, [Introduction to Virtual Power Purchase Agreements](https://www.epa.gov/green-power-markets/introduction-virtual-power-purchase-agreements)
-- FERC, [Energy Primer: A Handbook of Energy Market Basics](https://www.ferc.gov/media/energy-primer-handbook-energy-market-basics)
-- ERCOT, [Nodal Protocols](https://www.ercot.com/mktrules/nprotocols) (settlement point prices, Section 6)
-- Lawrence Berkeley National Laboratory, [utility-scale solar and wind market reports](https://emp.lbl.gov/renewable-energy)
-- Efron & Tibshirani, *An Introduction to the Bootstrap*
-
-## About this project
-
-> *AI assistance (edit or remove): Built with an AI coding assistant. I defined the questions, chose the methods,
-> validated the results against history, and wrote the findings; I can walk through every line.*
-
 MIT License. Uses public data only; no confidential information from any employer.
