@@ -30,7 +30,7 @@ API = "https://api.ercot.com/api/public-reports"
 REPORT = "np6-905-cd"
 QUERY_URL = f"{API}/{REPORT}/spp_node_zone_hub"
 ARCHIVE_URL = f"{API}/archive/{REPORT}"
-QUERY_START = pd.Timestamp("2023-12-11")   # first delivery date the query endpoint holds
+QUERY_START = pd.Timestamp("2023-12-11")   # first (partial) delivery date the query endpoint holds
 
 # ERCOT's sign-in service (Azure B2C, "password" flow). The client ID is
 # public: it identifies the API, not the user.
@@ -181,7 +181,9 @@ def _read_archive_zip(content: bytes, points: set) -> pd.DataFrame:
 
 def _archive_prices(api: ErcotSession, year: int, points: list) -> pd.DataFrame:
     """Prices for a year before the query endpoint starts, from archived files."""
-    end = min(pd.Timestamp(f"{year + 1}-01-01"), QUERY_START)
+    # The query endpoint starts partway through QUERY_START's day, so the
+    # archive covers that whole day too; duplicates are dropped later.
+    end = min(pd.Timestamp(f"{year + 1}-01-01"), QUERY_START + pd.Timedelta(days=1))
     # Each file is posted a few minutes after its interval ends, so read a
     # little past the end of the window and keep only the delivery dates wanted.
     ids = _archive_doc_ids(api, f"{year}-01-01T00:00:00",
