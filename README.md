@@ -125,6 +125,13 @@ more expensive, especially at night when West Texas wind congests the transmissi
 
 ![Basis risk](figures/10_basis_risk.png)
 
+**Basis risk, generator side.** The wind project sits at BRISCOE_WIND in the Panhandle, where wind exports over
+congested lines. Its node priced below HB_WEST in every one of the 36 months, most of all in the windy spring (March-May) and fall
+(October-December) months.
+The typical gap widens as the project's output rises.
+
+![Generator-side basis](figures/10b_generator_basis.png)
+
 **Portfolio comparison, each option sized to 100% of annual use.**
 
 ![Portfolio comparison](figures/08_portfolio_comparison.png)
@@ -169,9 +176,13 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
    averaged about $8-10/MWh above the HB_WEST hub, adding $7.3-8.8M a year to a 100 MW load's bill. Buying at
    LZ_WEST raises the unhedged average bill from $32.0M to $40.1M, and the blend then removes about 78% of the
    year-to-year swing instead of 85%, because the VPPA tracks the hub while the bill follows the load zone.
-7. **Volume risk is not only about money.** When prices are mostly below strike, a calm year *reduces* VPPA payments,
+7. **The wind project's own location costs it another $4.5-5.9M a year.** At its Panhandle node (BRISCOE_WIND), the
+   200 MW wind project earned $7.9-10.2/MWh less than the HB_WEST price the VPPA settles on, a little worse than the
+   plain average gap because the discount deepens when the wind blows hardest; the hub-settled contract leaves that
+   loss with the project, but settling at the node would hand it to the buyer.
+8. **Volume risk is not only about money.** When prices are mostly below strike, a calm year *reduces* VPPA payments,
    but it still cuts RECs and hourly match and weakens the hedge.
-8. **The hedge only exists if the buyer pays market prices.** With a fixed-price retail contract, the same VPPA adds risk.
+9. **The hedge only exists if the buyer pays market prices.** With a fixed-price retail contract, the same VPPA adds risk.
 
 ## 7. Limitations
 
