@@ -1,5 +1,7 @@
 # vppa-risk-lab
 
+[![tests](https://github.com/andrepaoPeru/vppa-risk-lab/actions/workflows/tests.yml/badge.svg)](https://github.com/andrepaoPeru/vppa-risk-lab/actions/workflows/tests.yml)
+
 Risk analytics for a hypothetical **virtual power purchase agreement (VPPA)** serving a **24/7 data center in ERCOT** (Texas).
 Hourly settlement backtest, price / shape / basis / volume risk, a Monte Carlo of cash flow at risk,
 a solar vs. wind vs. blend vs. solar + battery comparison, and a test of whether the VPPA actually hedges the buyer's power bill.
@@ -127,8 +129,7 @@ more expensive, especially at night when West Texas wind congests the transmissi
 
 **Basis risk, generator side.** The wind project sits at BRISCOE_WIND in the Panhandle, where wind exports over
 congested lines. Its node priced below HB_WEST in every one of the 36 months, most of all in the windy spring (March-May) and fall
-(October-December) months.
-The typical gap widens as the project's output rises.
+(October-December) months. The typical gap widens as the project's output rises.
 
 ![Generator-side basis](figures/10b_generator_basis.png)
 
@@ -218,7 +219,7 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
 git clone https://github.com/andrepaoPeru/vppa-risk-lab.git
 cd vppa-risk-lab
 pip install -r requirements.txt
-python scripts/fetch_data.py          # first run downloads ~3 years of ERCOT data (a few minutes)
+python scripts/fetch_data.py          # first run: a few minutes, plus about an hour for node prices (see below)
 python -m pytest                      # 50 tests of the settlement, risk, Monte Carlo, battery and API parsing
 jupyter notebook notebooks/vppa_story.ipynb
 ```
@@ -226,14 +227,15 @@ jupyter notebook notebooks/vppa_story.ipynb
 Node prices (generator-side basis) need a free [ERCOT Public API](https://apiexplorer.ercot.com) account. Set
 `ERCOT_API_USERNAME`, `ERCOT_API_PASSWORD` and `ERCOT_PUBLIC_API_SUBSCRIPTION_KEY` as environment variables before
 running `fetch_data.py`; without them that step is skipped. 2023 node prices come from ~33,000 archived files and
-take about an hour the first time; an interrupted download resumes where it stopped.
+take about an hour the first time; an interrupted download resumes where it stopped. A template for the three
+variables is in [`.env.example`](.env.example).
 
 Change any assumption (hub, years, project sizes, load, strike, battery, wind node) in [`vppa/config.py`](vppa/config.py),
 or set `STRIKE` in the notebook's first cell. Tested with Python 3.13.
 
 ```
 vppa-risk-lab/
-├── vppa/              # config, data, profiles, settlement, risk, montecarlo, portfolio, plots
+├── vppa/              # config, data, ercot_api, profiles, settlement, risk, montecarlo, portfolio, plots
 ├── scripts/           # fetch_data.py: builds the local data cache
 ├── notebooks/         # vppa_story.ipynb: the end-to-end story
 ├── tests/             # pytest tests on small hand-checked examples
