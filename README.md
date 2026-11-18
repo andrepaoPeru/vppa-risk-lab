@@ -146,7 +146,7 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
 
 ## 6. Findings
 
-> **DRAFT - to be rewritten in the author's own words.** Numbers: HB_WEST hub, $35/MWh strike, 2023-2025 data,
+> ** Numbers: HB_WEST hub, $35/MWh strike, 2023-2025 data,
 > 10,000 simulated years, each option sized to 100% of the data center's annual use.
 
 | | Solar | Wind | **Solar + wind** | Solar + battery |
