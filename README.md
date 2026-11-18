@@ -242,4 +242,8 @@ vppa-risk-lab/
 └── figures/           # charts used here and in the notebook
 ```
 
+## About this project
+
+This is a self-directed learning project, built with AI coding assistance.
+
 MIT License. Uses public data only; no confidential information from any employer.
