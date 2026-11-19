@@ -8,7 +8,7 @@ a solar vs. wind vs. blend vs. solar + battery comparison, and a test of whether
 
 Built with **public ERCOT data only**. All projects, contract terms and the data center are hypothetical.
 
-> **Start here:** [`notebooks/vppa_story.ipynb`](notebooks/vppa_story.ipynb) tells the whole story end to end, with every chart.
+> **Start here:** [`notebooks/vppa_story.ipynb`](notebooks/vppa_story.ipynb) 
 
 ---
 
