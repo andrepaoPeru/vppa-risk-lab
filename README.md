@@ -8,7 +8,7 @@ a solar vs. wind vs. blend vs. solar + battery comparison, and a test of whether
 
 Built with **public ERCOT data only**. All projects, contract terms and the data center are hypothetical.
 
-> **Start here:** [`notebooks/vppa_story.ipynb`](notebooks/vppa_story.ipynb) 
+> **Start here:** [`notebooks/vppa_story.ipynb`](notebooks/vppa_story.ipynb) tells the whole story end to end, with every chart.
 
 ---
 
@@ -150,7 +150,7 @@ These findings are written from the perspective of the buyer who is trying to he
 it has Renewable Certificates. The main conclusion is that the VPPA does add hedging coverage to the utility bill of this
 "fake datacenter". I would recommend signing this VPPA but at a lower strike price because historical prices sat mostly below the strike.
 
-> ** Numbers: HB_WEST hub, $35/MWh strike, 2023-2025 data,
+> Numbers: HB_WEST hub, $35/MWh strike, 2023-2025 data,
 > 10,000 simulated years, each option sized to 100% of the data center's annual use.
 
 | | Solar | Wind | **Solar + wind** | Solar + battery |
@@ -174,22 +174,22 @@ it has Renewable Certificates. The main conclusion is that the VPPA does add hed
 3. **Solar's value collapsed as Texas solar grew.** Its capture price went from about $17/MWh *above* the hub average
    in 2023 to about $12/MWh *below* it in 2025, as midday prices fell and the evening peak rose. This is because of more solar projects
    coming online.
-5. **Solar alone** is cheapest on average at this strike but leaves most hours uncovered and has the widest swings. This option would create
+4. **Solar alone** is cheapest on average at this strike but leaves most hours uncovered and has the widest swings. This option would create
    shape risk.
    **Wind alone** is the most predictable contract but the most costly, and it hedges the bill less well than the blend.
-7. **Solar + battery over-hedges.** As sized here, it pushes so much energy into scarcity hours that the bill swings the
+5. **Solar + battery over-hedges.** As sized here, it pushes so much energy into scarcity hours that the bill swings the
    other way (about $10M in 2023 vs. $34M in 2025). A smaller battery, or storage added to the blend, is the next test.
-8. **Location costs the buyer about $8M a year that the VPPA does not hedge.** The data center's load zone (LZ_WEST)
+6. **Location costs the buyer about $8M a year that the VPPA does not hedge.** The data center's load zone (LZ_WEST)
    averaged about $8-10/MWh above the HB_WEST hub, adding $7.3-8.8M a year to a 100 MW load's bill. Buying at
    LZ_WEST raises the unhedged average bill from $32.0M to $40.1M, and the blend then removes about 78% of the
    year-to-year swing instead of 85%, because the VPPA tracks the hub while the bill follows the load zone.
-9. **The wind project's own location costs it another $4.5-5.9M a year.** At its Panhandle node (BRISCOE_WIND), the
+7. **The wind project's own location costs it another $4.5-5.9M a year.** At its Panhandle node (BRISCOE_WIND), the
    200 MW wind project earned $7.9-10.2/MWh less than the HB_WEST price the VPPA settles on, a little worse than the
    plain average gap because the discount deepens when the wind blows hardest; the hub-settled contract leaves that
    loss with the project, but settling at the node would hand it to the buyer.
-10. **Volume risk is not only about money.** When prices are mostly below strike, a calm year *reduces* VPPA payments,
+8. **Volume risk is not only about money.** When prices are mostly below strike, a calm year *reduces* VPPA payments,
    but it still cuts RECs and hourly match and weakens the hedge.
-11. **The hedge only exists if the buyer pays market prices.** With a fixed-price retail contract, the same VPPA adds risk.
+9. **The hedge only exists if the buyer pays market prices.** With a fixed-price retail contract, the same VPPA adds risk.
 
 ## 7. Limitations
 
