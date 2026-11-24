@@ -147,8 +147,8 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
 ## 6. Findings
 
 These findings are written from the perspective of the buyer who is trying to hedge its power bill and ensure 
-it has Renewable Certificates. The main conclusion is that the VPPA does add hedging coverage to the utility bill of this
-"fake datacenter". I would recommend the solar + wind blend, negotiated toward its breakeven strike of about $30/MWh, because 2023-2025 prices mostly sat below $35.
+it has renewable energy certificates (RECs). The main conclusion is that the VPPA works as a hedge for this hypothetical
+data center, removing up to about 85% of the year-to-year swing in its power bill. I would recommend the solar + wind blend, negotiated toward its breakeven strike of about $30/MWh, because 2023-2025 prices mostly sat below $35.
 
 > Numbers: HB_WEST hub, $35/MWh strike, 2023-2025 data,
 > 10,000 simulated years, each option sized to 100% of the data center's annual use.
@@ -166,16 +166,17 @@ it has Renewable Certificates. The main conclusion is that the VPPA does add hed
 \* Battery cost is not modeled; a real solar + storage contract would carry a higher strike.
 
 1. **At a $35 strike, a solar + wind VPPA is a strong hedge but not a cheap one.** It removes about 85% of the
-   year-to-year swing in the data center's power bill and caps a 1-in-20 bad year near $38M. It also
+   year-to-year swing in the data center's power bill and caps a 1-in-20 bad year near $38M instead of $44M with no VPPA. It also
    gives the best hourly clean-energy match (80%). In exchange, the average bill is about $4.6M a year higher, because
    West Texas prices in 2023-2025 mostly sat below $35. Its breakeven strike is about $30/MWh.
 2. **Price risk lives in the tails.** For the 200 MW solar contract, the top 1% of price hours earned the buyer about
    +$14.7M over three years while the other 99% cost about -$14.6M.
 3. **Solar's value collapsed as Texas solar grew.** Its capture price went from about $17/MWh *above* the hub average
-   in 2023 to about $12/MWh *below* it in 2025, as midday prices fell and the evening peak rose. This is because of more solar projects
-   coming online.
-4. **Solar alone** is cheapest on average at this strike but leaves most hours uncovered and has the widest swings. This option would create
-   shape risk.
+   in 2023 to about $12/MWh *below* it in 2025, as midday prices fell and the evening peak rose. Two causes: the August 2023 heat wave, whose
+   late-afternoon price spikes landed in solar hours, and ERCOT solar capacity more than doubling (about 15 GW at the
+   end of 2022 to 37 GW at the end of 2025), which pushed midday prices down.
+4. **Solar alone** is cheapest on average at this strike but leaves most hours uncovered and has the widest swings. It carries the most shape risk: it covers
+   only 44% of the load hour by hour.
    **Wind alone** is the most predictable contract but the most costly, and it hedges the bill less well than the blend.
 5. **Solar + battery over-hedges.** As sized here, it pushes so much energy into scarcity hours that the bill swings the
    other way (about $10M in 2023 vs. $34M in 2025). A smaller battery, or storage added to the blend, is the next test.
