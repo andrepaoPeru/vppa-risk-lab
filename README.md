@@ -148,7 +148,7 @@ More charts (price sensitivity, negative-price hours, volume risk, battery opera
 
 These findings are written from the perspective of the buyer who is trying to hedge its power bill and ensure 
 it has Renewable Certificates. The main conclusion is that the VPPA does add hedging coverage to the utility bill of this
-"fake datacenter". I would recommend signing this VPPA but at a lower strike price because historical prices sat mostly below the strike.
+"fake datacenter". I would recommend the solar + wind blend, negotiated toward its breakeven strike of about $30/MWh, because 2023-2025 prices mostly sat below $35.
 
 > Numbers: HB_WEST hub, $35/MWh strike, 2023-2025 data,
 > 10,000 simulated years, each option sized to 100% of the data center's annual use.
